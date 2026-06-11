@@ -4,6 +4,8 @@ const { neon } = require("@neondatabase/serverless");
 const DEFAULT_STATE = {
   name: "VOICE STUDIO",
   tagline: "Dich vu long tieng khoa hoc chuyen nghiep",
+  facebook: "",
+  discord: "",
   courses: []
 };
 
@@ -61,6 +63,8 @@ exports.handler = async (event) => {
       const clean = {
         name: String(payload.name || "VOICE STUDIO").slice(0, 200),
         tagline: String(payload.tagline || "").slice(0, 500),
+        facebook: String(payload.facebook || "").slice(0, 2000),
+        discord: String(payload.discord || "").slice(0, 2000),
         courses: Array.isArray(payload.courses)
           ? payload.courses.slice(0, 500).map((course) => ({
               title: String(course.title || "").slice(0, 300),
