@@ -130,7 +130,6 @@
 
   .body { padding: 16px 16px 18px; }
   .body h3 { margin-bottom: 6px; font-size: 17px; font-weight: 600; line-height: 1.25; }
-  .note { min-height: 16px; margin-bottom: 14px; color: var(--muted); font-size: 12.5px; font-weight: 300; }
 
   .meta {
     display: flex;
@@ -395,7 +394,6 @@
         </div>
         <div class="body">
           <h3>The Art of Effective Rigging 2</h3>
-          <p class="note"></p>
           <div class="meta"><span class="eta"></span><span class="pct">65%</span></div>
           <div class="track"><div class="fill doing" data-w="65" style="width: 65%;"></div></div>
         </div>
@@ -407,7 +405,6 @@
         </div>
         <div class="body">
           <h3>70 Exercises for Perfecting Stylized Character Creation</h3>
-          <p class="note"></p>
           <div class="meta"><span class="eta"></span><span class="pct">10%</span></div>
           <div class="track"><div class="fill doing" data-w="10" style="width: 10%;"></div></div>
         </div>
@@ -419,7 +416,6 @@
         </div>
         <div class="body">
           <h3>Alive! Animation course in Blender</h3>
-          <p class="note"></p>
           <div class="meta"><span class="eta"></span><span class="pct">100%</span></div>
           <div class="track"><div class="fill done" data-w="100" style="width: 100%;"></div></div>
         </div>
@@ -497,16 +493,8 @@
         </div>
       </div>
 
-      <div class="row">
-        <div>
-          <label for="f-eta">Thời gian dự kiến</label>
-          <input id="f-eta" placeholder="Vd: 20/06/2026">
-        </div>
-        <div>
-          <label for="f-note">Ghi chú</label>
-          <input id="f-note" placeholder="Vd: Đang lồng module 3/6">
-        </div>
-      </div>
+      <label for="f-eta">Thời gian dự kiến</label>
+      <input id="f-eta" placeholder="Vd: 20/06/2026">
 
       <div class="btns">
         <button class="btn-primary" type="button" onclick="submitForm()">Lưu khóa học</button>
@@ -588,24 +576,21 @@
       "image": "https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg",
       "status": "done",
       "progress": 100,
-      "eta": "",
-      "note": ""
+      "eta": ""
     },
     {
       "title": "The Art of Effective Rigging 2",
       "image": "https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg",
       "status": "doing",
       "progress": 65,
-      "eta": "",
-      "note": ""
+      "eta": ""
     },
     {
       "title": "70 Exercises for Perfecting Stylized Character Creation",
       "image": "https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg",
       "status": "doing",
       "progress": 10,
-      "eta": "",
-      "note": ""
+      "eta": ""
     }
   ]
 };
@@ -748,7 +733,6 @@
         </div>
         <div class="body">
           <h3>${esc(course.title)}</h3>
-          <p class="note">${esc(course.note)}</p>
           <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
           <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>
           ${contactIcons()}
@@ -846,8 +830,7 @@
       image,
       status: normalizeStatus(document.getElementById("f-status").value),
       progress: clampProgress(document.getElementById("f-progress").value),
-      eta: document.getElementById("f-eta").value.trim(),
-      note: document.getElementById("f-note").value.trim()
+      eta: document.getElementById("f-eta").value.trim()
     };
 
     const id = document.getElementById("f-id").value;
@@ -870,7 +853,6 @@
     document.getElementById("f-status").value = normalizeStatus(course.status);
     document.getElementById("f-progress").value = clampProgress(course.progress);
     document.getElementById("f-eta").value = course.eta || "";
-    document.getElementById("f-note").value = course.note || "";
     document.getElementById("form-title").textContent = "Sửa: " + (course.title || "");
     updatePreview();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -888,7 +870,7 @@
 
   function resetForm() {
     document.getElementById("f-id").value = "";
-    ["f-title", "f-image", "f-eta", "f-note"].forEach(id => {
+    ["f-title", "f-image", "f-eta"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("f-status").value = "doing";

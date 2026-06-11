@@ -71,8 +71,7 @@ exports.handler = async (event) => {
               image: String(course.image || "").slice(0, 2000),
               status: ["doing", "pending", "done"].includes(course.status) ? course.status : "pending",
               progress: Math.max(0, Math.min(100, parseInt(course.progress, 10) || 0)),
-              eta: String(course.eta || "").slice(0, 200),
-              note: String(course.note || "").slice(0, 500)
+              eta: String(course.eta || "").slice(0, 200)
             }))
           : []
       };
