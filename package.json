@@ -1,0 +1,9 @@
+{
+  "name": "nixart-web",
+  "version": "1.0.0",
+  "description": "VOICE STUDIO - bang theo doi tien do long tieng",
+  "private": true,
+  "dependencies": {
+    "@neondatabase/serverless": "0.10.4"
+  }
+}

@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="vi"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOICE STUDIO - Tiến độ lồng tiếng</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&amp;family=Sora:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #100c08;
+    --bg-soft: #18130d;
+    --panel: #1f1812;
+    --panel-2: #271e15;
+    --line: #3a2e1f;
+    --amber: #ff9e2c;
+    --amber-hi: #ffc46b;
+    --green: #4ddb8e;
+    --red: #ff4d3d;
+    --pending: #7d6f59;
+    --muted: #9c8c74;
+    --text: #f3ead9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    min-height: 100vh;
+  }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 24px 60px; }
+
+  .top { margin-bottom: 38px; }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 7vw, 68px);
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+
+  h1 span { color: var(--amber); }
+
+  #brand {
+    cursor: pointer;
+    display: inline-block;
+    user-select: none;
+  }
+
+  .top p {
+    color: var(--muted);
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 300;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform .3s ease, border-color .3s, box-shadow .3s;
+  }
+
+  .card:hover {
+    transform: translateY(-5px);
+    border-color: var(--amber);
+    box-shadow: 0 16px 36px rgba(0,0,0,.5);
+  }
+
+  .thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+  }
+
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .5s ease;
+  }
+
+  .card:hover .thumb img { transform: scale(1.06); }
+
+  .thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(16,12,8,.85), transparent 55%);
+  }
+
+  .badge {
+    position: absolute;
+    top: 11px;
+    left: 11px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    backdrop-filter: blur(4px);
+  }
+
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .badge.doing { background: rgba(255,158,44,.18); color: var(--amber-hi); border: 1px solid var(--amber); }
+  .badge.doing .dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: blink 1.4s infinite; }
+  .badge.pending { background: rgba(125,111,89,.2); color: #d9c9ad; border: 1px solid var(--pending); }
+  .badge.pending .dot { background: var(--pending); }
+  .badge.done { background: rgba(77,219,142,.15); color: var(--green); border: 1px solid var(--green); }
+  .badge.done .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+  .body { padding: 16px 16px 18px; }
+  .body h3 { margin-bottom: 6px; font-size: 17px; font-weight: 600; line-height: 1.25; }
+  .note { min-height: 16px; margin-bottom: 14px; color: var(--muted); font-size: 12.5px; font-weight: 300; }
+
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+
+  .meta .eta { color: var(--text); }
+  .meta .pct { color: var(--amber-hi); font-weight: 600; }
+
+  .track {
+    height: 7px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .fill {
+    width: 0;
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--amber), var(--amber-hi));
+    transition: width 1s cubic-bezier(.2,.8,.2,1);
+  }
+
+  .fill.done { background: linear-gradient(90deg, #2fae6c, var(--green)); }
+  .fill.pending { background: var(--pending); }
+
+  #admin-view { display: none; }
+  body.admin-open #public-view { display: none; }
+  body.admin-open #admin-view { display: block; }
+
+  .admin-wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 70px; }
+
+  .admin-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .admin-top h1 { font-size: clamp(36px, 6vw, 56px); }
+  .admin-top .sub { color: var(--muted); font-size: 13px; margin-top: 4px; font-weight: 300; }
+
+  .panel {
+    margin-bottom: 24px;
+    padding: 22px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .panel h2 {
+    margin-bottom: 18px;
+    color: var(--amber-hi);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 1px;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  input, select {
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 14px;
+    transition: border-color .2s;
+  }
+
+  input:focus, select:focus { outline: none; border-color: var(--amber); }
+  select option { background: var(--panel); }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .row-img {
+    display: grid;
+    grid-template-columns: 1fr 120px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .preview {
+    aspect-ratio: 16 / 9;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .preview img { width: 100%; height: 100%; object-fit: cover; }
+
+  .btns, .bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .bar { margin-bottom: 22px; }
+
+  button {
+    padding: 11px 18px;
+    border: 0;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: .2s;
+  }
+
+  .btn-primary { background: var(--amber); color: #1a1206; }
+  .btn-primary:hover { background: var(--amber-hi); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .btn-danger:hover { background: var(--red); color: #fff; }
+  .btn-save { background: var(--green); color: #08210f; }
+  .btn-save:hover { filter: brightness(1.1); }
+
+  .item {
+    display: grid;
+    grid-template-columns: 70px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .item .ph {
+    width: 70px;
+    height: 44px;
+    object-fit: cover;
+    background: var(--panel-2);
+    border-radius: 5px;
+  }
+
+  .item .info h4 { margin-bottom: 3px; font-size: 14px; font-weight: 600; }
+
+  .item .info .m {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+
+  .pill { padding: 2px 8px; border-radius: 20px; font-size: 10px; letter-spacing: .5px; }
+  .pill.doing { background: rgba(255,158,44,.18); color: var(--amber-hi); }
+  .pill.pending { background: rgba(125,111,89,.25); color: #d9c9ad; }
+  .pill.done { background: rgba(77,219,142,.15); color: var(--green); }
+
+  .item .acts { display: flex; gap: 8px; }
+  .item .acts button { padding: 7px 11px; }
+
+  .hint {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 300;
+    line-height: 1.5;
+  }
+
+  .empty {
+    padding: 6px 2px;
+    color: var(--muted);
+    font-style: italic;
+    font-weight: 300;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 99;
+    padding: 12px 22px;
+    background: var(--green);
+    border-radius: 8px;
+    color: #08210f;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    opacity: 0;
+    transform: translateX(-50%) translateY(80px);
+    transition: .35s;
+  }
+
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 620px) {
+    .row, .row-img { grid-template-columns: 1fr; }
+    .item { grid-template-columns: 60px 1fr; }
+    .item .ph { width: 60px; height: 38px; }
+    .item .acts { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<section id="public-view">
+  <div class="wrap">
+    <div class="top">
+      <h1 id="brand">VOICE <span>STUDIO</span></h1>
+      <p id="tagline">Dịch vụ lồng tiếng khóa học chuyên nghiệp</p>
+    </div>
+    <div class="grid" id="grid">
+      <article class="card">
+        <div class="thumb">
+          <span class="badge doing"><span class="dot"></span>Đang làm</span>
+          <img src="https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg" alt="The Art of Effective Rigging 2" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
+        </div>
+        <div class="body">
+          <h3>The Art of Effective Rigging 2</h3>
+          <p class="note"></p>
+          <div class="meta"><span class="eta"></span><span class="pct">65%</span></div>
+          <div class="track"><div class="fill doing" data-w="65" style="width: 65%;"></div></div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="thumb">
+          <span class="badge doing"><span class="dot"></span>Đang làm</span>
+          <img src="https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg" alt="70 Exercises for Perfecting Stylized Character Creation" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
+        </div>
+        <div class="body">
+          <h3>70 Exercises for Perfecting Stylized Character Creation</h3>
+          <p class="note"></p>
+          <div class="meta"><span class="eta"></span><span class="pct">10%</span></div>
+          <div class="track"><div class="fill doing" data-w="10" style="width: 10%;"></div></div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="thumb">
+          <span class="badge done"><span class="dot"></span>Đã xong</span>
+          <img src="https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg" alt="Alive! Animation course in Blender" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
+        </div>
+        <div class="body">
+          <h3>Alive! Animation course in Blender</h3>
+          <p class="note"></p>
+          <div class="meta"><span class="eta"></span><span class="pct">100%</span></div>
+          <div class="track"><div class="fill done" data-w="100" style="width: 100%;"></div></div>
+        </div>
+      </article></div>
+  </div>
+</section>
+
+<section id="admin-view" aria-hidden="true">
+  <div class="admin-wrap">
+    <div class="admin-top">
+      <div>
+        <h1>QUẢN <span>TRỊ</span></h1>
+        <p class="sub">Thêm, sửa, xóa khóa học và thông tin studio.</p>
+      </div>
+      <button class="btn-ghost" type="button" onclick="hideAdmin()">Về trang chính</button>
+    </div>
+
+    <div class="panel">
+      <h2>Mật khẩu quản trị</h2>
+      <label for="admin-pass">Nhập mật khẩu để lưu thay đổi lên web</label>
+      <input id="admin-pass" type="password" placeholder="Mật khẩu admin" autocomplete="current-password">
+      <p class="hint">Mật khẩu này phải khớp với ADMIN_PASSWORD bạn đặt trên Netlify. Nhập sai sẽ không lưu được.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Thông tin studio</h2>
+      <div class="row">
+        <div>
+          <label for="s-name">Tên studio</label>
+          <input id="s-name" placeholder="VOICE STUDIO">
+        </div>
+        <div>
+          <label for="s-tag">Mô tả ngắn</label>
+          <input id="s-tag" placeholder="Dịch vụ lồng tiếng...">
+        </div>
+      </div>
+      <button class="btn-primary" type="button" onclick="saveStudio()">Lưu thông tin</button>
+    </div>
+
+    <div class="panel">
+      <h2 id="form-title">Thêm khóa học mới</h2>
+      <input type="hidden" id="f-id" value="">
+
+      <label for="f-title">Tên khóa học *</label>
+      <input id="f-title" placeholder="Vd: Tiếng Anh Giao Tiếp">
+
+      <label for="f-image">Image address (dán link ảnh) *</label>
+      <div class="row-img">
+        <input id="f-image" placeholder="https://... .jpg" oninput="updatePreview()">
+        <div class="preview"><img id="f-preview" src="https://placehold.co/600x340/1f1812/ff9e2c?text=ANH" alt=""></div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="f-status">Trạng thái</label>
+          <select id="f-status">
+            <option value="doing">Đang làm</option>
+            <option value="pending">Chờ làm</option>
+            <option value="done">Đã xong</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-progress">Tiến độ (%)</label>
+          <input id="f-progress" type="number" min="0" max="100" value="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="f-eta">Thời gian dự kiến</label>
+          <input id="f-eta" placeholder="Vd: 20/06/2026">
+        </div>
+        <div>
+          <label for="f-note">Ghi chú</label>
+          <input id="f-note" placeholder="Vd: Đang lồng module 3/6">
+        </div>
+      </div>
+
+      <div class="btns">
+        <button class="btn-primary" type="button" onclick="submitForm()">Lưu khóa học</button>
+        <button class="btn-ghost" type="button" onclick="resetForm()">Làm mới form</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Danh sách khóa học (<span id="count">3</span>)</h2>
+      <div class="bar">
+        <button class="btn-save" type="button" onclick="exportData()">Tải lại từ server</button>
+        <button class="btn-ghost" type="button" onclick="resetAll()">Khôi phục dữ liệu gốc</button>
+      </div>
+      <p class="hint" style="margin-bottom:18px">
+        Mọi thay đổi được lưu thẳng lên server, ai mở web cũng thấy ngay. Nhớ nhập <b>mật khẩu quản trị</b> ở trên trước khi lưu.
+      </p>
+      <div id="list">
+        <div class="item">
+          <img class="ph" src="https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
+          <div class="info">
+            <h4>Alive! Animation course in Blender</h4>
+            <div class="m">
+              <span class="pill done">Đã xong</span>
+              <span>100%</span>
+              <span>-</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn-ghost" type="button" onclick="editCourse(0)">Sửa</button>
+            <button class="btn-danger" type="button" onclick="deleteCourse(0)">Xóa</button>
+          </div>
+        </div>
+        <div class="item">
+          <img class="ph" src="https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
+          <div class="info">
+            <h4>The Art of Effective Rigging 2</h4>
+            <div class="m">
+              <span class="pill doing">Đang làm</span>
+              <span>65%</span>
+              <span>-</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn-ghost" type="button" onclick="editCourse(1)">Sửa</button>
+            <button class="btn-danger" type="button" onclick="deleteCourse(1)">Xóa</button>
+          </div>
+        </div>
+        <div class="item">
+          <img class="ph" src="https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
+          <div class="info">
+            <h4>70 Exercises for Perfecting Stylized Character Creation</h4>
+            <div class="m">
+              <span class="pill doing">Đang làm</span>
+              <span>10%</span>
+              <span>-</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn-ghost" type="button" onclick="editCourse(2)">Sửa</button>
+            <button class="btn-danger" type="button" onclick="deleteCourse(2)">Xóa</button>
+          </div>
+        </div></div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast">Đã cập nhật</div>
+
+<script>
+  //__STATE_START__
+  const DEFAULT_STATE = {
+  "name": "VOICE STUDIO",
+  "tagline": "Dịch vụ lồng tiếng khóa học chuyên nghiệp",
+  "courses": [
+    {
+      "title": "Alive! Animation course in Blender",
+      "image": "https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg",
+      "status": "done",
+      "progress": 100,
+      "eta": "",
+      "note": ""
+    },
+    {
+      "title": "The Art of Effective Rigging 2",
+      "image": "https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg",
+      "status": "doing",
+      "progress": 65,
+      "eta": "",
+      "note": ""
+    },
+    {
+      "title": "70 Exercises for Perfecting Stylized Character Creation",
+      "image": "https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg",
+      "status": "doing",
+      "progress": 10,
+      "eta": "",
+      "note": ""
+    }
+  ]
+};
+  //__STATE_END__
+</script>
+<script>
+  const LABELS = { doing: "Đang làm", pending: "Chờ làm", done: "Đã xong" };
+  const ORDER = { doing: 0, pending: 1, done: 2 };
+  const FALLBACK_IMAGE = "https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC";
+  const PREVIEW_IMAGE = "https://placehold.co/600x340/1f1812/ff9e2c?text=ANH";
+
+  const API_URL = "/api/state";
+  let state = cloneDefaultState();
+  let brandClicks = 0;
+  let brandTimer = null;
+
+  function cloneDefaultState() {
+    return JSON.parse(JSON.stringify(DEFAULT_STATE));
+  }
+
+  // Doc du lieu tu server (Neon) khi mo trang
+  async function loadState() {
+    try {
+      const response = await fetch(API_URL, { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      if (data && Array.isArray(data.courses)) {
+        state = {
+          name: data.name || DEFAULT_STATE.name,
+          tagline: data.tagline || DEFAULT_STATE.tagline,
+          courses: data.courses
+        };
+      }
+    } catch (error) {
+      // Mat ket noi -> hien du lieu goc de trang khong trong
+      state = cloneDefaultState();
+      console.error("Khong tai duoc du lieu:", error);
+    }
+  }
+
+  // Ghi du lieu len server. Tra ve true neu thanh cong.
+  async function persist() {
+    const password = document.getElementById("admin-pass").value;
+    if (!password) { toast("Nhập mật khẩu quản trị trước"); return false; }
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": password
+        },
+        body: JSON.stringify(state)
+      });
+      if (response.status === 401) { toast("Sai mật khẩu quản trị"); return false; }
+      if (!response.ok) { toast("Lưu thất bại, thử lại"); return false; }
+      return true;
+    } catch (error) {
+      toast("Mất kết nối, lưu thất bại");
+      return false;
+    }
+  }
+
+  function esc(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[char]));
+  }
+
+  function clampProgress(value) {
+    const number = parseInt(value, 10);
+    if (Number.isNaN(number)) return 0;
+    return Math.max(0, Math.min(100, number));
+  }
+
+  function normalizeStatus(status) {
+    return Object.prototype.hasOwnProperty.call(LABELS, status) ? status : "pending";
+  }
+
+  function setBrandText(element, value) {
+    const text = String(value || "VOICE STUDIO").trim() || "VOICE STUDIO";
+    const parts = text.split(/\s+/);
+    element.textContent = "";
+    if (parts.length === 1) {
+      const span = document.createElement("span");
+      span.textContent = parts[0];
+      element.append(span);
+      return;
+    }
+    element.append(document.createTextNode(parts[0] + " "));
+    const span = document.createElement("span");
+    span.textContent = parts.slice(1).join(" ");
+    element.append(span);
+  }
+
+  function renderPublic() {
+    setBrandText(document.getElementById("brand"), state.name);
+    document.getElementById("tagline").textContent = state.tagline || "";
+
+    const sorted = [...state.courses].sort((a, b) => {
+      return (ORDER[normalizeStatus(a.status)] ?? 9) - (ORDER[normalizeStatus(b.status)] ?? 9);
+    });
+
+    document.getElementById("grid").innerHTML = sorted.map(courseCard).join("");
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        document.querySelectorAll(".fill").forEach(fill => {
+          fill.style.width = fill.dataset.w + "%";
+        });
+      }, 200);
+    });
+  }
+
+  function courseCard(course) {
+    const status = normalizeStatus(course.status);
+    const progress = clampProgress(course.progress);
+    return `
+      <article class="card">
+        <div class="thumb">
+          <span class="badge ${status}"><span class="dot"></span>${LABELS[status]}</span>
+          <img src="${esc(course.image)}" alt="${esc(course.title)}" onerror="this.src='${FALLBACK_IMAGE}'">
+        </div>
+        <div class="body">
+          <h3>${esc(course.title)}</h3>
+          <p class="note">${esc(course.note)}</p>
+          <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
+          <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>
+        </div>
+      </article>`;
+  }
+
+  function renderAdmin() {
+    document.getElementById("s-name").value = state.name || "";
+    document.getElementById("s-tag").value = state.tagline || "";
+    document.getElementById("count").textContent = state.courses.length;
+
+    const list = document.getElementById("list");
+    if (!state.courses.length) {
+      list.innerHTML = `<p class="empty">Chưa có khóa học nào.</p>`;
+      return;
+    }
+
+    list.innerHTML = state.courses.map((course, index) => {
+      const status = normalizeStatus(course.status);
+      const progress = clampProgress(course.progress);
+      return `
+        <div class="item">
+          <img class="ph" src="${esc(course.image)}" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
+          <div class="info">
+            <h4>${esc(course.title)}</h4>
+            <div class="m">
+              <span class="pill ${status}">${LABELS[status]}</span>
+              <span>${progress}%</span>
+              <span>${esc(course.eta || "-")}</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn-ghost" type="button" onclick="editCourse(${index})">Sửa</button>
+            <button class="btn-danger" type="button" onclick="deleteCourse(${index})">Xóa</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderAll() {
+    renderPublic();
+    renderAdmin();
+  }
+
+  function showAdmin() {
+    document.body.classList.add("admin-open");
+    document.getElementById("admin-view").setAttribute("aria-hidden", "false");
+    document.getElementById("public-view").setAttribute("aria-hidden", "true");
+    renderAdmin();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function hideAdmin() {
+    document.body.classList.remove("admin-open");
+    document.getElementById("admin-view").setAttribute("aria-hidden", "true");
+    document.getElementById("public-view").setAttribute("aria-hidden", "false");
+    renderPublic();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleBrandClick() {
+    brandClicks += 1;
+    clearTimeout(brandTimer);
+    if (brandClicks >= 3) {
+      brandClicks = 0;
+      showAdmin();
+      return;
+    }
+    brandTimer = setTimeout(() => { brandClicks = 0; }, 1200);
+  }
+
+  function toast(message) {
+    const toastElement = document.getElementById("toast");
+    toastElement.textContent = message;
+    toastElement.classList.add("show");
+    setTimeout(() => toastElement.classList.remove("show"), 2200);
+  }
+
+  function updatePreview() {
+    const value = document.getElementById("f-image").value.trim();
+    document.getElementById("f-preview").src = value || PREVIEW_IMAGE;
+  }
+
+  async function submitForm() {
+    const title = document.getElementById("f-title").value.trim();
+    const image = document.getElementById("f-image").value.trim();
+    if (!title) { toast("Nhập tên khóa học"); return; }
+    if (!image) { toast("Dán link ảnh"); return; }
+
+    const course = {
+      title,
+      image,
+      status: normalizeStatus(document.getElementById("f-status").value),
+      progress: clampProgress(document.getElementById("f-progress").value),
+      eta: document.getElementById("f-eta").value.trim(),
+      note: document.getElementById("f-note").value.trim()
+    };
+
+    const id = document.getElementById("f-id").value;
+    const backup = JSON.stringify(state.courses);
+    if (id === "") state.courses.push(course);
+    else state.courses[parseInt(id, 10)] = course;
+
+    const ok = await persist();
+    if (!ok) { state.courses = JSON.parse(backup); return; }
+    renderAll();
+    resetForm();
+    toast(id === "" ? "Đã thêm khóa học" : "Đã cập nhật");
+  }
+
+  function editCourse(index) {
+    const course = state.courses[index];
+    document.getElementById("f-id").value = index;
+    document.getElementById("f-title").value = course.title || "";
+    document.getElementById("f-image").value = course.image || "";
+    document.getElementById("f-status").value = normalizeStatus(course.status);
+    document.getElementById("f-progress").value = clampProgress(course.progress);
+    document.getElementById("f-eta").value = course.eta || "";
+    document.getElementById("f-note").value = course.note || "";
+    document.getElementById("form-title").textContent = "Sửa: " + (course.title || "");
+    updatePreview();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteCourse(index) {
+    if (!confirm(`Xóa khóa học "${state.courses[index].title}"?`)) return;
+    const backup = JSON.stringify(state.courses);
+    state.courses.splice(index, 1);
+    const ok = await persist();
+    if (!ok) { state.courses = JSON.parse(backup); return; }
+    renderAll();
+    toast("Đã xóa");
+  }
+
+  function resetForm() {
+    document.getElementById("f-id").value = "";
+    ["f-title", "f-image", "f-eta", "f-note"].forEach(id => {
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("f-status").value = "doing";
+    document.getElementById("f-progress").value = 0;
+    document.getElementById("form-title").textContent = "Thêm khóa học mới";
+    updatePreview();
+  }
+
+  async function saveStudio() {
+    const backupName = state.name;
+    const backupTag = state.tagline;
+    state.name = document.getElementById("s-name").value.trim() || "VOICE STUDIO";
+    state.tagline = document.getElementById("s-tag").value.trim();
+    const ok = await persist();
+    if (!ok) { state.name = backupName; state.tagline = backupTag; return; }
+    renderAll();
+    toast("Đã lưu thông tin studio");
+  }
+
+  async function resetAll() {
+    if (!confirm("Khôi phục về dữ liệu gốc? Dữ liệu hiện tại trên web sẽ bị thay thế.")) return;
+    const backup = JSON.stringify(state);
+    state = cloneDefaultState();
+    const ok = await persist();
+    if (!ok) { state = JSON.parse(backup); return; }
+    renderAll();
+    resetForm();
+    toast("Đã khôi phục dữ liệu gốc");
+  }
+
+  async function exportData() {
+    await loadState();
+    renderAll();
+    toast("Đã tải lại dữ liệu từ server");
+  }
+
+  document.getElementById("brand").addEventListener("click", handleBrandClick);
+  document.getElementById("f-preview").addEventListener("error", function () {
+    this.src = PREVIEW_IMAGE;
+  });
+
+  // Tai du lieu tu server roi moi hien trang
+  loadState().then(renderAll);
+</script>
+
+
+</body></html>
