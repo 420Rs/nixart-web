@@ -4,6 +4,7 @@
   "description": "VOICE STUDIO - bang theo doi tien do long tieng",
   "private": true,
   "dependencies": {
-    "@neondatabase/serverless": "0.10.4"
+    "@neondatabase/serverless": "0.10.4",
+    "googleapis": "^173.0.0"
   }
 }

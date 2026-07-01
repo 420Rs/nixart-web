@@ -10,3 +10,13 @@
   from = "/api/state"
   to = "/.netlify/functions/state"
   status = 200
+
+[[redirects]]
+  from = "/api/orders"
+  to = "/.netlify/functions/orders"
+  status = 200
+
+[[redirects]]
+  from = "/review"
+  to = "/.netlify/functions/review"
+  status = 200
