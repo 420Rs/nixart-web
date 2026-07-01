@@ -64,7 +64,7 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod === "GET") {
       const rows = await sql`
-        SELECT purchase_code, course_title, email, payer_name, transfer_reference, amount, status, created_at
+        SELECT purchase_code, course_title, email, payer_name, transfer_reference, amount, status, created_at, delivery_type
         FROM purchase_orders WHERE token_hash = ${tokenHash} LIMIT 1
       `;
       const order = rows[0];
@@ -78,6 +78,7 @@ exports.handler = async (event) => {
         <div class="row"><span class="label">Email Google</span>${esc(order.email)}</div>
         <div class="row"><span class="label">Tên người chuyển</span>${esc(order.payer_name)}</div>
         <div class="row"><span class="label">Mã giao dịch</span>${esc(order.transfer_reference || "Không cung cấp")}</div>
+        <div class="row"><span class="label">Giao hàng</span>${order.delivery_type === "manual" ? "Giao tài khoản thủ công" : "Tự động cấp Google Drive"}</div>
         <p>Chỉ bấm chấp nhận sau khi đã kiểm tra tiền trong ứng dụng ngân hàng.</p>
         <form method="post" class="actions">
           <input type="hidden" name="token" value="${esc(token)}">
@@ -93,7 +94,7 @@ exports.handler = async (event) => {
     const claimed = await sql`
       UPDATE purchase_orders SET status = 'processing'
       WHERE token_hash = ${tokenHash} AND status = 'pending'
-      RETURNING id, course_title, drive_folder_id, email
+      RETURNING id, course_title, drive_folder_id, email, delivery_type
     `;
     const order = claimed[0];
     if (!order) return page("Đơn đã được xử lý", "<p>Đơn này không còn ở trạng thái chờ duyệt.</p>", 409);
@@ -101,6 +102,11 @@ exports.handler = async (event) => {
     if (action === "reject") {
       await sql`UPDATE purchase_orders SET status = 'rejected', reviewed_at = NOW() WHERE id = ${order.id}`;
       return page("Đã từ chối", "<p>Đơn đã bị từ chối và không có quyền Drive nào được cấp.</p>");
+    }
+
+    if (order.delivery_type === "manual") {
+      await sql`UPDATE purchase_orders SET status = 'approved', reviewed_at = NOW() WHERE id = ${order.id}`;
+      return page("Đã duyệt thanh toán", `<p>Đơn của <strong>${esc(order.email)}</strong> đã được duyệt. Hãy giao thông tin tài khoản cho khách qua kênh riêng.</p>`);
     }
 
     try {

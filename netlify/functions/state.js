@@ -60,7 +60,7 @@ function publicState(data) {
     courses: Array.isArray(data.courses)
       ? data.courses.map(({ driveFolderId, ...course }) => ({
           ...course,
-          deliveryReady: Boolean(driveFolderId)
+          deliveryReady: course.contentType === "account" || Boolean(driveFolderId)
         }))
       : []
   };
@@ -115,7 +115,7 @@ exports.handler = async (event) => {
               title: String(course.title || "").slice(0, 300),
               image: String(course.image || "").slice(0, 2000),
               description: String(course.description || "").slice(0, 2000),
-              contentType: ["course", "model", "addon"].includes(course.contentType) ? course.contentType : "course",
+              contentType: ["course", "model", "addon", "account"].includes(course.contentType) ? course.contentType : "course",
               downloadUrl: /^https:\/\//i.test(String(course.downloadUrl || "").trim())
                 ? String(course.downloadUrl).trim().slice(0, 2000)
                 : "",

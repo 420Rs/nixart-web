@@ -41,10 +41,12 @@ async function ensureOrdersTable() {
       amount BIGINT NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       drive_permission_id VARCHAR(300),
+      delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       reviewed_at TIMESTAMPTZ
     )
   `;
+  await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive'`;
   await sql`CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders (status, created_at DESC)`;
 }
 
@@ -62,12 +64,13 @@ async function notifyDiscord(order, reviewUrl) {
         title: "Yêu cầu xác nhận thanh toán",
         color: 0xff9e2c,
         fields: [
-          { name: "Khóa học", value: order.courseTitle.slice(0, 1024) },
+          { name: "Sản phẩm", value: order.courseTitle.slice(0, 1024) },
           { name: "Số tiền", value: `${Number(order.amount).toLocaleString("vi-VN")} đ`, inline: true },
           { name: "Mã đơn", value: order.purchaseCode, inline: true },
           { name: "Email Google", value: order.email.slice(0, 1024) },
           { name: "Người chuyển", value: order.payerName.slice(0, 1024), inline: true },
-          { name: "Mã giao dịch", value: order.transferReference || "Không cung cấp", inline: true }
+          { name: "Mã giao dịch", value: order.transferReference || "Không cung cấp", inline: true },
+          { name: "Giao hàng", value: order.deliveryType === "manual" ? "Admin giao tài khoản thủ công" : "Tự động cấp Google Drive" }
         ],
         description: `[Mở trang kiểm tra và duyệt đơn](${reviewUrl})`,
         timestamp: new Date().toISOString()
@@ -104,7 +107,8 @@ exports.handler = async (event) => {
     const courses = Array.isArray(stateRows[0]?.data?.courses) ? stateRows[0].data.courses : [];
     const course = courses.find((item) => String(item.id || "").toLowerCase() === courseId);
 
-    if (!course || !course.saleEnabled || !course.price || !course.driveFolderId) {
+    const deliveryType = course?.contentType === "account" ? "manual" : "drive";
+    if (!course || !course.saleEnabled || !course.price || (deliveryType === "drive" && !course.driveFolderId)) {
       return json(409, { error: "Khoa hoc chua san sang de ban hoac giao tu dong" });
     }
 
@@ -121,10 +125,10 @@ exports.handler = async (event) => {
     await sql`
       INSERT INTO purchase_orders (
         id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
-        email, payer_name, transfer_reference, amount
+        email, payer_name, transfer_reference, amount, delivery_type
       ) VALUES (
         ${id}, ${purchaseCode}, ${hashToken(token)}, ${courseId}, ${String(course.title)},
-        ${String(course.driveFolderId)}, ${email}, ${payerName}, ${transferReference}, ${Number(course.price)}
+        ${String(course.driveFolderId || "")}, ${email}, ${payerName}, ${transferReference}, ${Number(course.price)}, ${deliveryType}
       )
     `;
 
@@ -134,7 +138,7 @@ exports.handler = async (event) => {
     try {
       await notifyDiscord({
         courseTitle: String(course.title), amount: Number(course.price), purchaseCode,
-        email, payerName, transferReference
+        email, payerName, transferReference, deliveryType
       }, reviewUrl);
     } catch (error) {
       await sql`DELETE FROM purchase_orders WHERE id = ${id}`;
