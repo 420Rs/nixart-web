@@ -6,9 +6,9 @@ const DEFAULT_STATE = {
   tagline: "Dich vu long tieng khoa hoc chuyen nghiep",
   facebook: "",
   discord: "",
-  bankBin: "",
-  bankAccount: "",
-  bankAccountName: "",
+  bankBin: "970422",
+  bankAccount: "0965672650",
+  bankAccountName: "VU THANH AN",
   courses: []
 };
 
@@ -52,7 +52,11 @@ function courseId(value, title, index) {
 
 function publicState(data) {
   return {
+    ...DEFAULT_STATE,
     ...data,
+    bankBin: data.bankBin || DEFAULT_STATE.bankBin,
+    bankAccount: data.bankAccount || DEFAULT_STATE.bankAccount,
+    bankAccountName: data.bankAccountName || DEFAULT_STATE.bankAccountName,
     courses: Array.isArray(data.courses)
       ? data.courses.map(({ driveFolderId, ...course }) => ({
           ...course,
