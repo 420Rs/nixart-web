@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { neon } = require("@neondatabase/serverless");
+const { getAuthenticatedUser } = require("./lib/auth");
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -42,11 +43,13 @@ async function ensureOrdersTable() {
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       drive_permission_id VARCHAR(300),
       delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive',
+      auth_user_id VARCHAR(100),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       reviewed_at TIMESTAMPTZ
     )
   `;
   await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive'`;
+  await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS auth_user_id VARCHAR(100)`;
   await sql`CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders (status, created_at DESC)`;
 }
 
@@ -82,6 +85,23 @@ async function notifyDiscord(order, reviewUrl) {
 }
 
 exports.handler = async (event) => {
+  if (event.httpMethod === "GET") {
+    try {
+      const user = await getAuthenticatedUser(event);
+      if (!user) return json(401, { error: "Vui long dang nhap" });
+      await ensureOrdersTable();
+      const rows = await sql`
+        SELECT purchase_code, course_title, amount, status, created_at, reviewed_at
+        FROM purchase_orders
+        WHERE auth_user_id = ${user.id} AND delivery_type = 'manual'
+        ORDER BY created_at DESC LIMIT 100
+      `;
+      return json(200, { orders: rows });
+    } catch (error) {
+      console.error("list orders error", error);
+      return json(500, { error: "Khong tai duoc don hang" });
+    }
+  }
   if (event.httpMethod !== "POST") return json(405, { error: "Phuong thuc khong duoc ho tro" });
 
   try {
@@ -93,13 +113,13 @@ exports.handler = async (event) => {
     }
 
     const courseId = cleanText(payload.courseId, 100).toLowerCase();
-    const email = cleanText(payload.email, 254).toLowerCase();
+    let email = cleanText(payload.email, 254).toLowerCase();
     const payerName = cleanText(payload.payerName, 200);
     const transferReference = cleanText(payload.transferReference, 200);
     const purchaseCode = cleanText(payload.purchaseCode, 30).toUpperCase();
 
-    if (!courseId || !validEmail(email) || !payerName || !/^NIX[A-Z0-9]{6,12}$/.test(purchaseCode)) {
-      return json(400, { error: "Vui long kiem tra email, ten nguoi chuyen va ma don" });
+    if (!courseId || !payerName || !/^NIX[A-Z0-9]{6,12}$/.test(purchaseCode)) {
+      return json(400, { error: "Vui long kiem tra ten nguoi chuyen va ma don" });
     }
 
     await ensureOrdersTable();
@@ -111,6 +131,11 @@ exports.handler = async (event) => {
     if (!course || !course.saleEnabled || !course.price || (deliveryType === "drive" && !course.driveFolderId)) {
       return json(409, { error: "Khoa hoc chua san sang de ban hoac giao tu dong" });
     }
+
+    const authUser = deliveryType === "manual" ? await getAuthenticatedUser(event) : null;
+    if (deliveryType === "manual" && !authUser) return json(401, { error: "Vui long dang nhap de mua tai khoan" });
+    if (authUser) email = authUser.email.toLowerCase();
+    if (!validEmail(email)) return json(400, { error: "Email khong hop le" });
 
     const duplicate = await sql`
       SELECT id FROM purchase_orders
@@ -125,10 +150,10 @@ exports.handler = async (event) => {
     await sql`
       INSERT INTO purchase_orders (
         id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
-        email, payer_name, transfer_reference, amount, delivery_type
+        email, payer_name, transfer_reference, amount, delivery_type, auth_user_id
       ) VALUES (
         ${id}, ${purchaseCode}, ${hashToken(token)}, ${courseId}, ${String(course.title)},
-        ${String(course.driveFolderId || "")}, ${email}, ${payerName}, ${transferReference}, ${Number(course.price)}, ${deliveryType}
+        ${String(course.driveFolderId || "")}, ${email}, ${payerName}, ${transferReference}, ${Number(course.price)}, ${deliveryType}, ${authUser?.id || null}
       )
     `;
 

@@ -323,6 +323,13 @@
   .catalog-tabs { display: flex; gap: 8px; margin: 0 0 28px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
   .catalog-tab { color: var(--muted); background: transparent; border: 1px solid var(--line); }
   .catalog-tab.active { color: #1a1206; background: var(--amber); border-color: var(--amber); }
+  .account-actions { display: flex; gap: 8px; margin-left: auto; }
+  .account-actions button { padding: 8px 12px; }
+  .auth-email { color: var(--amber-hi); font: 11px 'JetBrains Mono', monospace; align-self: center; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+  .orders-list { display: grid; gap: 10px; margin-top: 16px; }
+  .order-item { padding: 13px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 7px; }
+  .order-item strong { display: block; margin-bottom: 6px; }
+  .order-item span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; }
 
   textarea { min-height: 90px; resize: vertical; }
   input[type="checkbox"] { width: auto; margin: 0 8px 0 0; }
@@ -506,6 +513,12 @@
     <nav class="catalog-tabs" aria-label="Danh mục sản phẩm">
       <button class="catalog-tab active" id="tab-learning" type="button" onclick="switchCatalog('learning')">Khóa học & tài nguyên</button>
       <button class="catalog-tab" id="tab-accounts" type="button" onclick="switchCatalog('accounts')">Tài khoản</button>
+      <div class="account-actions">
+        <span class="auth-email" id="auth-email" hidden></span>
+        <button class="btn-ghost" id="auth-login" type="button" onclick="openAuth()">Đăng nhập</button>
+        <button class="btn-ghost" id="auth-orders" type="button" onclick="openMyOrders()" hidden>Đơn của tôi</button>
+        <button class="btn-ghost" id="auth-logout" type="button" onclick="signOutUser()" hidden>Đăng xuất</button>
+      </div>
     </nav>
     <div class="grid" id="grid">
       <article class="card">
@@ -757,8 +770,24 @@
   </div>
 </div>
 
+<div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head"><h2 id="auth-title">Đăng nhập để mua tài khoản</h2><button class="modal-close" type="button" onclick="closeAuth()" aria-label="Đóng">×</button></div>
+    <p class="order-note">Email đăng nhập sẽ được dùng để theo dõi đơn hàng và nhận hỗ trợ.</p>
+    <button class="btn-primary" id="google-login" type="button" onclick="signInGoogle()">Tiếp tục với Google</button>
+  </div>
+</div>
+
+<div class="modal" id="orders-modal" role="dialog" aria-modal="true" aria-labelledby="orders-title">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head"><h2 id="orders-title">Đơn tài khoản của tôi</h2><button class="modal-close" type="button" onclick="closeMyOrders()" aria-label="Đóng">×</button></div>
+    <div class="orders-list" id="orders-list"><p class="empty">Đang tải...</p></div>
+  </div>
+</div>
+
 <div class="toast" id="toast">Đã cập nhật</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   //__STATE_START__
   const DEFAULT_STATE = {
@@ -819,6 +848,8 @@
   let brandTimer = null;
   let currentPurchaseCode = "";
   let activeCatalog = "learning";
+  let authClient = null;
+  let authSession = null;
 
   function cloneDefaultState() {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -889,6 +920,83 @@
 
   function normalizeStatus(status) {
     return Object.prototype.hasOwnProperty.call(LABELS, status) ? status : "pending";
+  }
+
+  async function initAuth() {
+    try {
+      const response = await fetch("/api/auth-config", { cache: "no-store" });
+      const config = await response.json();
+      if (!config.url || !config.anonKey || !window.supabase) return;
+      authClient = window.supabase.createClient(config.url, config.anonKey);
+      const { data } = await authClient.auth.getSession();
+      authSession = data.session;
+      renderAuthState();
+      authClient.auth.onAuthStateChange((_event, session) => {
+        authSession = session;
+        renderAuthState();
+      });
+      const pendingId = localStorage.getItem("pendingAccountCourse");
+      if (authSession && pendingId) {
+        localStorage.removeItem("pendingAccountCourse");
+        setTimeout(() => openOrder(pendingId), 0);
+      }
+    } catch (error) {
+      console.error("Khong khoi tao duoc dang nhap:", error);
+    }
+  }
+
+  function renderAuthState() {
+    const signedIn = Boolean(authSession?.user);
+    document.getElementById("auth-login").hidden = signedIn;
+    document.getElementById("auth-orders").hidden = !signedIn;
+    document.getElementById("auth-logout").hidden = !signedIn;
+    const email = document.getElementById("auth-email");
+    email.hidden = !signedIn;
+    email.textContent = signedIn ? authSession.user.email : "";
+  }
+
+  function openAuth() {
+    if (!authClient) { toast("Chưa cấu hình Supabase Auth"); return; }
+    document.getElementById("auth-modal").classList.add("open");
+  }
+
+  function closeAuth() { document.getElementById("auth-modal").classList.remove("open"); }
+
+  async function signInGoogle() {
+    if (!authClient) return;
+    const { error } = await authClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${location.origin}${location.pathname}` }
+    });
+    if (error) toast(error.message);
+  }
+
+  async function signOutUser() {
+    if (authClient) await authClient.auth.signOut();
+    authSession = null;
+    renderAuthState();
+  }
+
+  function closeMyOrders() { document.getElementById("orders-modal").classList.remove("open"); }
+
+  async function openMyOrders() {
+    if (!authSession) { openAuth(); return; }
+    const modal = document.getElementById("orders-modal");
+    const list = document.getElementById("orders-list");
+    modal.classList.add("open");
+    list.innerHTML = `<p class="empty">Đang tải...</p>`;
+    try {
+      const response = await fetch("/api/orders", { headers: { Authorization: `Bearer ${authSession.access_token}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không tải được đơn hàng");
+      const labels = { pending: "Chờ duyệt", processing: "Đang xử lý", approved: "Đã thanh toán", rejected: "Bị từ chối" };
+      list.innerHTML = data.orders.length ? data.orders.map(order => `
+        <div class="order-item"><strong>${esc(order.course_title)}</strong>
+          <span>${esc(order.purchase_code)} · ${formatPrice(order.amount)} · ${labels[order.status] || esc(order.status)}</span>
+        </div>`).join("") : `<p class="empty">Bạn chưa có đơn tài khoản nào.</p>`;
+    } catch (error) {
+      list.innerHTML = `<p class="empty">${esc(error.message)}</p>`;
+    }
   }
 
   function formatPrice(value) {
@@ -1233,6 +1341,12 @@
       toast("Khóa học chưa sẵn sàng để mua");
       return;
     }
+    const isAccount = normalizeContentType(course.contentType) === "account";
+    if (isAccount && !authSession) {
+      localStorage.setItem("pendingAccountCourse", courseId);
+      openAuth();
+      return;
+    }
     if (!state.bankBin || !state.bankAccount || !state.bankAccountName) {
       toast("Chưa cấu hình tài khoản nhận tiền");
       return;
@@ -1246,6 +1360,9 @@
     document.getElementById("order-account-name").textContent = state.bankAccountName;
     document.getElementById("order-amount").textContent = formatPrice(course.price);
     document.getElementById("order-code").textContent = currentPurchaseCode;
+    const emailInput = document.getElementById("order-email");
+    emailInput.readOnly = isAccount;
+    emailInput.value = isAccount ? authSession.user.email : "";
     const qr = document.getElementById("order-qr");
     qr.src = `https://img.vietqr.io/image/${encodeURIComponent(state.bankBin)}-${encodeURIComponent(state.bankAccount)}-compact2.png?amount=${encodeURIComponent(course.price)}&addInfo=${encodeURIComponent(currentPurchaseCode)}&accountName=${encodeURIComponent(state.bankAccountName)}`;
     qr.hidden = false;
@@ -1264,9 +1381,11 @@
     button.disabled = true;
     button.textContent = "Đang gửi...";
     try {
+      const headers = { "Content-Type": "application/json" };
+      if (authSession?.access_token) headers.Authorization = `Bearer ${authSession.access_token}`;
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           courseId: document.getElementById("order-course-id").value,
           purchaseCode: currentPurchaseCode,
@@ -1308,6 +1427,7 @@
   // Tai du lieu tu server roi moi hien trang. Giu loader toi thieu de tranh nhay man hinh.
   Promise.all([
     loadState(),
+    initAuth(),
     new Promise(resolve => setTimeout(resolve, 650))
   ]).then(() => {
     renderAll();

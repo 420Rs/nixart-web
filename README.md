@@ -24,8 +24,19 @@ Thêm hai biến mới:
 
 - `DISCORD_WEBHOOK_URL`: webhook của channel nhận thông báo đơn hàng.
 - `GOOGLE_SERVICE_ACCOUNT_JSON`: toàn bộ nội dung file JSON của Google service account, để trên một dòng.
+- `SUPABASE_URL`: Project URL của Supabase, dùng cho đăng nhập khách mua tài khoản.
+- `SUPABASE_ANON_KEY`: publishable/anon key của Supabase. Không dùng service-role key.
 
 Netlify tự cung cấp biến `URL`; link duyệt đơn sẽ dùng domain production này.
+
+## Cấu hình đăng nhập Google
+
+1. Tạo Supabase project và bật provider Google trong Authentication > Providers.
+2. Cấu hình Google OAuth theo callback URL Supabase hiển thị.
+3. Trong Authentication > URL Configuration, đặt Site URL là `https://nixart.io.vn` và thêm cùng URL vào Redirect URLs.
+4. Thêm `SUPABASE_URL` và `SUPABASE_ANON_KEY` vào Netlify rồi redeploy.
+
+Đăng nhập chỉ bắt buộc khi mua sản phẩm loại `Tài khoản`. Khóa học và tài nguyên miễn phí không đổi.
 
 ## Cấu hình Google Drive
 
