@@ -198,6 +198,8 @@
   .badge.pending .dot { background: var(--pending); }
   .badge.done { background: rgba(77,219,142,.15); color: var(--green); border: 1px solid var(--green); }
   .badge.done .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .badge.asset { background: rgba(88,101,242,.17); color: #aeb7ff; border: 1px solid #7380ff; }
+  .badge.asset .dot { background: #8994ff; box-shadow: 0 0 6px #8994ff; }
 
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 
@@ -380,6 +382,9 @@
   .sale-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
   .price { color: var(--amber-hi); font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 700; }
   .buy-btn:disabled { cursor: not-allowed; opacity: .45; }
+  .download-btn { display: inline-flex; align-items: center; justify-content: center; padding: 11px 18px; border-radius: 6px; background: var(--green); color: #08210f; font: 600 12px 'JetBrains Mono', monospace; letter-spacing: 1px; text-decoration: none; transition: filter .2s, transform .2s; }
+  .download-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .free-label { color: var(--green); font: 700 15px 'JetBrains Mono', monospace; }
 
   .modal { position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 18px; background: rgba(0,0,0,.76); }
   .modal.open { display: grid; }
@@ -600,6 +605,21 @@
 
       <div class="row">
         <div>
+          <label for="f-type">Loại nội dung</label>
+          <select id="f-type" onchange="toggleContentFields()">
+            <option value="course">Khóa học</option>
+            <option value="model">Model miễn phí</option>
+            <option value="addon">Addon miễn phí</option>
+          </select>
+        </div>
+        <div id="download-field" hidden>
+          <label for="f-download">Link tải file *</label>
+          <input id="f-download" type="url" placeholder="https://drive.google.com/...">
+        </div>
+      </div>
+
+      <div class="row" id="progress-fields">
+        <div>
           <label for="f-status">Trạng thái</label>
           <select id="f-status">
             <option value="doing">Đang làm</option>
@@ -619,7 +639,7 @@
       <label for="f-description">Mô tả khóa học</label>
       <textarea id="f-description" placeholder="Nội dung chính, đối tượng phù hợp..."></textarea>
 
-      <div class="row">
+      <div class="row" id="commerce-fields">
         <div>
           <label for="f-price">Giá bán (VNĐ)</label>
           <input id="f-price" type="number" min="0" step="1000" placeholder="499000">
@@ -629,8 +649,8 @@
           <input id="f-drive" placeholder="Để trống nếu chưa giao tự động">
         </div>
       </div>
-      <label><input id="f-sale" type="checkbox">Cho phép đặt mua khóa học này</label>
-      <p class="hint" style="margin:8px 0 16px">Folder ID chỉ được gửi lên server. Nếu khóa học đã có folder, để trống ô này sẽ giữ nguyên cấu hình cũ.</p>
+      <label id="sale-field"><input id="f-sale" type="checkbox">Cho phép đặt mua khóa học này</label>
+      <p class="hint" id="sale-hint" style="margin:8px 0 16px">Folder ID chỉ được gửi lên server. Nếu khóa học đã có folder, để trống ô này sẽ giữ nguyên cấu hình cũ.</p>
 
       <div class="btns">
         <button class="btn-primary" type="button" onclick="submitForm()">Lưu khóa học</button>
@@ -864,6 +884,17 @@
     return `${Math.max(0, Number(value) || 0).toLocaleString("vi-VN")} đ`;
   }
 
+  function normalizeContentType(value) {
+    return ["model", "addon"].includes(value) ? value : "course";
+  }
+
+  function directDownloadUrl(value) {
+    const url = String(value || "").trim();
+    const driveFile = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveFile) return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFile[1])}`;
+    return url;
+  }
+
   function setBrandText(element, value) {
     const text = String(value || "VOICE STUDIO").trim() || "VOICE STUDIO";
     const parts = text.split(/\s+/);
@@ -914,18 +945,26 @@
   function courseCard(course) {
     const status = normalizeStatus(course.status);
     const progress = clampProgress(course.progress);
+    const contentType = normalizeContentType(course.contentType);
+    const isAsset = contentType !== "course";
+    const assetLabel = contentType === "model" ? "MODEL MIỄN PHÍ" : "ADDON MIỄN PHÍ";
     return `
       <article class="card">
         <div class="thumb">
-          <span class="badge ${status}"><span class="dot"></span>${LABELS[status]}</span>
+          <span class="badge ${isAsset ? "asset" : status}"><span class="dot"></span>${isAsset ? assetLabel : LABELS[status]}</span>
           <img src="${esc(course.image)}" alt="${esc(course.title)}" onerror="this.src='${FALLBACK_IMAGE}'">
         </div>
         <div class="body">
           <h3>${esc(course.title)}</h3>
-          <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
-          <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>
+          ${isAsset ? "" : `
+            <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
+            <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>`}
           ${course.description ? `<p class="course-description">${esc(course.description)}</p>` : ""}
-          ${course.saleEnabled && Number(course.price) > 0 ? `
+          ${isAsset && course.downloadUrl ? `
+            <div class="sale-row">
+              <span class="free-label">FREE</span>
+              <a class="download-btn" href="${esc(directDownloadUrl(course.downloadUrl))}" target="_blank" rel="noopener noreferrer" download>Tải xuống</a>
+            </div>` : course.saleEnabled && Number(course.price) > 0 ? `
             <div class="sale-row">
               <span class="price">${formatPrice(course.price)}</span>
               <button class="btn-primary buy-btn" type="button" onclick="openOrder('${esc(course.id)}')" ${course.deliveryReady ? "" : "disabled"}>
@@ -963,10 +1002,11 @@
             <h4>${esc(course.title)}</h4>
             <div class="m">
               <span class="pill ${status}">${LABELS[status]}</span>
+              <span>${normalizeContentType(course.contentType).toUpperCase()}</span>
               <span>${progress}%</span>
               <span>${esc(course.eta || "-")}</span>
-              <span>${course.saleEnabled ? formatPrice(course.price) : "Chưa bán"}</span>
-              <span>${course.deliveryReady ? "Drive sẵn sàng" : "Chưa có Drive"}</span>
+              <span>${normalizeContentType(course.contentType) === "course" ? (course.saleEnabled ? formatPrice(course.price) : "Chưa bán") : "Miễn phí"}</span>
+              <span>${normalizeContentType(course.contentType) === "course" ? (course.deliveryReady ? "Drive sẵn sàng" : "Chưa có Drive") : (course.downloadUrl ? "Có link tải" : "Chưa có link tải")}</span>
             </div>
           </div>
           <div class="acts">
@@ -1021,6 +1061,15 @@
     document.getElementById("f-preview").src = value || PREVIEW_IMAGE;
   }
 
+  function toggleContentFields() {
+    const isAsset = normalizeContentType(document.getElementById("f-type").value) !== "course";
+    document.getElementById("download-field").hidden = !isAsset;
+    document.getElementById("progress-fields").hidden = isAsset;
+    document.getElementById("commerce-fields").hidden = isAsset;
+    document.getElementById("sale-field").hidden = isAsset;
+    document.getElementById("sale-hint").hidden = isAsset;
+  }
+
   async function submitForm() {
     const title = document.getElementById("f-title").value.trim();
     const image = document.getElementById("f-image").value.trim();
@@ -1029,13 +1078,17 @@
 
     const editId = document.getElementById("f-id").value;
     const existingCourse = editId === "" ? null : state.courses[parseInt(editId, 10)];
+    const contentType = normalizeContentType(document.getElementById("f-type").value);
+    const downloadUrl = document.getElementById("f-download").value.trim();
     const course = {
       id: existingCourse?.id || `course-${Date.now().toString(36)}`,
       title,
       image,
       description: document.getElementById("f-description").value.trim(),
-      price: Math.max(0, parseInt(document.getElementById("f-price").value, 10) || 0),
-      saleEnabled: document.getElementById("f-sale").checked,
+      contentType,
+      downloadUrl,
+      price: contentType === "course" ? Math.max(0, parseInt(document.getElementById("f-price").value, 10) || 0) : 0,
+      saleEnabled: contentType === "course" && document.getElementById("f-sale").checked,
       deliveryReady: existingCourse?.deliveryReady || Boolean(document.getElementById("f-drive").value.trim()),
       driveFolderId: document.getElementById("f-drive").value.trim(),
       status: normalizeStatus(document.getElementById("f-status").value),
@@ -1043,6 +1096,10 @@
       eta: document.getElementById("f-eta").value.trim()
     };
 
+    if (contentType !== "course" && !/^https:\/\//i.test(downloadUrl)) {
+      toast("Model hoặc Addon cần link tải HTTPS");
+      return;
+    }
     if (course.saleEnabled && (!course.price || !course.deliveryReady)) {
       toast("Muốn mở bán cần nhập giá và Drive folder ID");
       return;
@@ -1069,9 +1126,12 @@
     document.getElementById("f-progress").value = clampProgress(course.progress);
     document.getElementById("f-eta").value = course.eta || "";
     document.getElementById("f-description").value = course.description || "";
+    document.getElementById("f-type").value = normalizeContentType(course.contentType);
+    document.getElementById("f-download").value = course.downloadUrl || "";
     document.getElementById("f-price").value = course.price || "";
     document.getElementById("f-drive").value = "";
     document.getElementById("f-sale").checked = Boolean(course.saleEnabled);
+    toggleContentFields();
     document.getElementById("form-title").textContent = "Sửa: " + (course.title || "");
     updatePreview();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1089,13 +1149,15 @@
 
   function resetForm() {
     document.getElementById("f-id").value = "";
-    ["f-title", "f-image", "f-eta", "f-description", "f-price", "f-drive"].forEach(id => {
+    ["f-title", "f-image", "f-eta", "f-description", "f-price", "f-drive", "f-download"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("f-status").value = "doing";
     document.getElementById("f-progress").value = 0;
+    document.getElementById("f-type").value = "course";
     document.getElementById("f-sale").checked = false;
     document.getElementById("form-title").textContent = "Thêm khóa học mới";
+    toggleContentFields();
     updatePreview();
   }
 

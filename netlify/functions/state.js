@@ -115,6 +115,10 @@ exports.handler = async (event) => {
               title: String(course.title || "").slice(0, 300),
               image: String(course.image || "").slice(0, 2000),
               description: String(course.description || "").slice(0, 2000),
+              contentType: ["course", "model", "addon"].includes(course.contentType) ? course.contentType : "course",
+              downloadUrl: /^https:\/\//i.test(String(course.downloadUrl || "").trim())
+                ? String(course.downloadUrl).trim().slice(0, 2000)
+                : "",
               price: Math.max(0, Math.min(1000000000, parseInt(course.price, 10) || 0)),
               saleEnabled: Boolean(course.saleEnabled),
               driveFolderId: submittedFolder || oldFolders.get(id) || "",
