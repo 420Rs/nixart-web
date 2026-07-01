@@ -37,8 +37,12 @@ async function grantDriveAccess(order) {
     scopes: ["https://www.googleapis.com/auth/drive"]
   });
   const drive = google.drive({ version: "v3", auth });
+  const folderValue = String(order.drive_folder_id || "").trim();
+  const folderMatch = folderValue.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  const folderId = folderMatch ? folderMatch[1] : folderValue;
+  if (!/^[a-zA-Z0-9_-]{10,}$/.test(folderId)) throw Object.assign(new Error("Google Drive Folder ID khong hop le"), { code: 400 });
   const response = await drive.permissions.create({
-    fileId: order.drive_folder_id,
+    fileId: folderId,
     sendNotificationEmail: true,
     emailMessage: `Bạn đã được cấp quyền truy cập khóa học ${order.course_title} từ Nixart.`,
     requestBody: { type: "user", role: "reader", emailAddress: order.email },
@@ -110,7 +114,13 @@ exports.handler = async (event) => {
     } catch (error) {
       await sql`UPDATE purchase_orders SET status = 'pending' WHERE id = ${order.id}`;
       console.error("drive permission error", error);
-      return page("Cấp quyền thất bại", "<p>Google Drive chưa cấp được quyền. Đơn đã được trả về trạng thái chờ để bạn có thể thử lại sau khi kiểm tra cấu hình.</p>", 502);
+      const code = Number(error.code || error.response?.status || 0);
+      let reason = "Kiểm tra GOOGLE_SERVICE_ACCOUNT_JSON trên Netlify.";
+      if (code === 400) reason = "Google Drive Folder ID không hợp lệ. Hãy dùng ID nằm sau /folders/ trong URL.";
+      if (code === 401) reason = "Khóa service account không hợp lệ hoặc đã bị thu hồi.";
+      if (code === 403) reason = "Google Drive API chưa bật, hoặc service account chưa có quyền Editor và quyền chia sẻ thư mục.";
+      if (code === 404) reason = "Không tìm thấy thư mục. Folder ID có thể sai hoặc thư mục chưa được chia sẻ cho service account.";
+      return page("Cấp quyền thất bại", `<p>${esc(reason)}</p><p>Đơn vẫn ở trạng thái chờ. Sửa cấu hình rồi mở lại link Discord để thử lại.</p>`, 502);
     }
   } catch (error) {
     console.error("review error", error);
