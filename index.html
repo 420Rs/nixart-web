@@ -1047,7 +1047,7 @@
   }
 
   function makePurchaseCode() {
-    const bytes = new Uint8Array(5);
+    const bytes = new Uint8Array(6);
     crypto.getRandomValues(bytes);
     return "NIX" + Array.from(bytes, value => (value % 36).toString(36)).join("").toUpperCase();
   }
