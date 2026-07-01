@@ -33,6 +33,79 @@
     min-height: 100vh;
   }
 
+  .workshop-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background:
+      linear-gradient(rgba(255,158,44,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,158,44,.045) 1px, transparent 1px),
+      radial-gradient(circle at 50% 38%, #261a0e 0, #100c08 52%);
+    background-size: 32px 32px, 32px 32px, auto;
+    transition: opacity .45s ease, visibility .45s ease;
+  }
+
+  .workshop-loader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  .loader-frame {
+    position: relative;
+    width: min(520px, 100%);
+    padding: 38px 34px 32px;
+    border: 1px solid #4d3820;
+    background: rgba(20,14,9,.9);
+    box-shadow: 0 22px 70px rgba(0,0,0,.58), inset 0 0 40px rgba(255,158,44,.035);
+    clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  }
+
+  .loader-frame::before, .loader-frame::after {
+    content: "";
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    border-color: var(--amber);
+    opacity: .75;
+  }
+
+  .loader-frame::before { top: 10px; left: 10px; border-top: 2px solid; border-left: 2px solid; }
+  .loader-frame::after { right: 10px; bottom: 10px; border-right: 2px solid; border-bottom: 2px solid; }
+  .loader-code { color: var(--amber); font: 600 10px 'JetBrains Mono', monospace; letter-spacing: 2.4px; }
+  .loader-title { margin: 12px 0 4px; font: 48px/1 'Bebas Neue', sans-serif; letter-spacing: 2px; }
+  .loader-title span { color: var(--amber); }
+  .loader-status { color: var(--muted); font: 11px 'JetBrains Mono', monospace; letter-spacing: 1px; }
+
+  .loader-machine { position: relative; height: 54px; margin: 28px 0 22px; border-bottom: 2px solid #4d3820; overflow: hidden; }
+  .loader-machine::before {
+    content: "";
+    position: absolute;
+    left: -45%;
+    bottom: 7px;
+    width: 45%;
+    height: 5px;
+    background: linear-gradient(90deg, transparent, var(--amber), var(--amber-hi), transparent);
+    filter: drop-shadow(0 0 7px rgba(255,158,44,.8));
+    animation: workshop-scan 1.35s linear infinite;
+  }
+
+  .loader-cogs { display: flex; align-items: flex-end; justify-content: center; gap: 10px; height: 100%; }
+  .loader-cog { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 4px; border: 5px dashed #6d4b25; border-radius: 50%; animation: workshop-spin 2.2s linear infinite; }
+  .loader-cog::after { content: ""; width: 8px; height: 8px; border: 2px solid var(--amber); border-radius: 50%; }
+  .loader-cog.small { width: 24px; height: 24px; border-width: 4px; animation-direction: reverse; animation-duration: 1.6s; }
+
+  .loader-track { height: 4px; overflow: hidden; background: #332416; }
+  .loader-bar { width: 38%; height: 100%; background: linear-gradient(90deg, transparent, var(--amber), var(--amber-hi)); animation: workshop-load 1.2s ease-in-out infinite; }
+  .loader-foot { display: flex; justify-content: space-between; margin-top: 9px; color: #715b42; font: 9px 'JetBrains Mono', monospace; letter-spacing: 1px; }
+
+  @keyframes workshop-spin { to { transform: rotate(360deg); } }
+  @keyframes workshop-scan { to { left: 100%; } }
+  @keyframes workshop-load { 0% { transform: translateX(-105%); } 100% { transform: translateX(265%); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loader-cog, .loader-machine::before, .loader-bar { animation-duration: 3s; }
+  }
+
   .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 24px 60px; }
 
   .top { margin-bottom: 38px; }
@@ -402,6 +475,18 @@
 </style>
 </head>
 <body>
+<div class="workshop-loader" id="workshop-loader" role="status" aria-live="polite" aria-label="Đang tải website">
+  <div class="loader-frame">
+    <div class="loader-code">NIXART // WORKSHOP SYSTEM</div>
+    <div class="loader-title">VOICE <span>STUDIO</span></div>
+    <div class="loader-status">ĐANG KHỞI ĐỘNG XƯỞNG...</div>
+    <div class="loader-machine" aria-hidden="true">
+      <div class="loader-cogs"><span class="loader-cog"></span><span class="loader-cog small"></span><span class="loader-cog"></span></div>
+    </div>
+    <div class="loader-track" aria-hidden="true"><div class="loader-bar"></div></div>
+    <div class="loader-foot"><span>ASSEMBLING ASSETS</span><span>PLEASE STAND BY</span></div>
+  </div>
+</div>
 <section id="public-view">
   <div class="wrap">
     <div class="top">
@@ -1122,8 +1207,22 @@
     this.src = PREVIEW_IMAGE;
   });
 
-  // Tai du lieu tu server roi moi hien trang
-  loadState().then(renderAll);
+  function hideWorkshopLoader() {
+    const loader = document.getElementById("workshop-loader");
+    requestAnimationFrame(() => {
+      loader.classList.add("is-hidden");
+      setTimeout(() => loader.remove(), 500);
+    });
+  }
+
+  // Tai du lieu tu server roi moi hien trang. Giu loader toi thieu de tranh nhay man hinh.
+  Promise.all([
+    loadState(),
+    new Promise(resolve => setTimeout(resolve, 650))
+  ]).then(() => {
+    renderAll();
+    hideWorkshopLoader();
+  });
 </script>
 
 
