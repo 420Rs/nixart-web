@@ -772,9 +772,16 @@
 
 <div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
   <div class="modal-box" style="max-width:440px">
-    <div class="modal-head"><h2 id="auth-title">Đăng nhập để mua tài khoản</h2><button class="modal-close" type="button" onclick="closeAuth()" aria-label="Đóng">×</button></div>
-    <p class="order-note">Email đăng nhập sẽ được dùng để theo dõi đơn hàng và nhận hỗ trợ.</p>
-    <button class="btn-primary" id="google-login" type="button" onclick="signInGoogle()">Tiếp tục với Google</button>
+    <div class="modal-head"><h2 id="auth-title">Tài khoản Nixart</h2><button class="modal-close" type="button" onclick="closeAuth()" aria-label="Đóng">×</button></div>
+    <p class="order-note">Đăng nhập hoặc tạo tài khoản để mua và theo dõi đơn tài khoản.</p>
+    <label for="auth-user-email">Email</label>
+    <input id="auth-user-email" type="email" autocomplete="email" placeholder="you@example.com">
+    <label for="auth-password">Mật khẩu</label>
+    <input id="auth-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" placeholder="Tối thiểu 8 ký tự">
+    <div class="btns">
+      <button class="btn-primary" id="auth-login-submit" type="button" onclick="submitAuth('login')">Đăng nhập</button>
+      <button class="btn-ghost" id="auth-register-submit" type="button" onclick="submitAuth('register')">Tạo tài khoản</button>
+    </div>
   </div>
 </div>
 
@@ -787,7 +794,6 @@
 
 <div class="toast" id="toast">Đã cập nhật</div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   //__STATE_START__
   const DEFAULT_STATE = {
@@ -848,8 +854,7 @@
   let brandTimer = null;
   let currentPurchaseCode = "";
   let activeCatalog = "learning";
-  let authClient = null;
-  let authSession = null;
+  let authUser = null;
 
   function cloneDefaultState() {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -924,19 +929,12 @@
 
   async function initAuth() {
     try {
-      const response = await fetch("/api/auth-config", { cache: "no-store" });
-      const config = await response.json();
-      if (!config.url || !config.anonKey || !window.supabase) return;
-      authClient = window.supabase.createClient(config.url, config.anonKey);
-      const { data } = await authClient.auth.getSession();
-      authSession = data.session;
+      const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
+      const data = await response.json();
+      authUser = data.user || null;
       renderAuthState();
-      authClient.auth.onAuthStateChange((_event, session) => {
-        authSession = session;
-        renderAuthState();
-      });
       const pendingId = localStorage.getItem("pendingAccountCourse");
-      if (authSession && pendingId) {
+      if (authUser && pendingId) {
         localStorage.removeItem("pendingAccountCourse");
         setTimeout(() => openOrder(pendingId), 0);
       }
@@ -946,47 +944,73 @@
   }
 
   function renderAuthState() {
-    const signedIn = Boolean(authSession?.user);
+    const signedIn = Boolean(authUser);
     document.getElementById("auth-login").hidden = signedIn;
     document.getElementById("auth-orders").hidden = !signedIn;
     document.getElementById("auth-logout").hidden = !signedIn;
     const email = document.getElementById("auth-email");
     email.hidden = !signedIn;
-    email.textContent = signedIn ? authSession.user.email : "";
+    email.textContent = signedIn ? authUser.email : "";
   }
 
   function openAuth() {
-    if (!authClient) { toast("Chưa cấu hình Supabase Auth"); return; }
     document.getElementById("auth-modal").classList.add("open");
   }
 
   function closeAuth() { document.getElementById("auth-modal").classList.remove("open"); }
 
-  async function signInGoogle() {
-    if (!authClient) return;
-    const { error } = await authClient.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}${location.pathname}` }
-    });
-    if (error) toast(error.message);
+  async function submitAuth(action) {
+    const email = document.getElementById("auth-user-email").value.trim();
+    const password = document.getElementById("auth-password").value;
+    if (!email || password.length < 8) { toast("Nhập email và mật khẩu tối thiểu 8 ký tự"); return; }
+    const loginButton = document.getElementById("auth-login-submit");
+    const registerButton = document.getElementById("auth-register-submit");
+    loginButton.disabled = registerButton.disabled = true;
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, email, password })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không đăng nhập được");
+      authUser = data.user;
+      renderAuthState();
+      closeAuth();
+      document.getElementById("auth-password").value = "";
+      toast(action === "register" ? "Đã tạo tài khoản" : "Đã đăng nhập");
+      const pendingId = localStorage.getItem("pendingAccountCourse");
+      if (pendingId) {
+        localStorage.removeItem("pendingAccountCourse");
+        openOrder(pendingId);
+      }
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      loginButton.disabled = registerButton.disabled = false;
+    }
   }
 
   async function signOutUser() {
-    if (authClient) await authClient.auth.signOut();
-    authSession = null;
+    await fetch("/api/auth", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" })
+    });
+    authUser = null;
     renderAuthState();
   }
 
   function closeMyOrders() { document.getElementById("orders-modal").classList.remove("open"); }
 
   async function openMyOrders() {
-    if (!authSession) { openAuth(); return; }
+    if (!authUser) { openAuth(); return; }
     const modal = document.getElementById("orders-modal");
     const list = document.getElementById("orders-list");
     modal.classList.add("open");
     list.innerHTML = `<p class="empty">Đang tải...</p>`;
     try {
-      const response = await fetch("/api/orders", { headers: { Authorization: `Bearer ${authSession.access_token}` } });
+      const response = await fetch("/api/orders", { credentials: "same-origin" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Không tải được đơn hàng");
       const labels = { pending: "Chờ duyệt", processing: "Đang xử lý", approved: "Đã thanh toán", rejected: "Bị từ chối" };
@@ -1342,7 +1366,7 @@
       return;
     }
     const isAccount = normalizeContentType(course.contentType) === "account";
-    if (isAccount && !authSession) {
+    if (isAccount && !authUser) {
       localStorage.setItem("pendingAccountCourse", courseId);
       openAuth();
       return;
@@ -1362,7 +1386,7 @@
     document.getElementById("order-code").textContent = currentPurchaseCode;
     const emailInput = document.getElementById("order-email");
     emailInput.readOnly = isAccount;
-    emailInput.value = isAccount ? authSession.user.email : "";
+    emailInput.value = isAccount ? authUser.email : "";
     const qr = document.getElementById("order-qr");
     qr.src = `https://img.vietqr.io/image/${encodeURIComponent(state.bankBin)}-${encodeURIComponent(state.bankAccount)}-compact2.png?amount=${encodeURIComponent(course.price)}&addInfo=${encodeURIComponent(currentPurchaseCode)}&accountName=${encodeURIComponent(state.bankAccountName)}`;
     qr.hidden = false;
@@ -1381,11 +1405,10 @@
     button.disabled = true;
     button.textContent = "Đang gửi...";
     try {
-      const headers = { "Content-Type": "application/json" };
-      if (authSession?.access_token) headers.Authorization = `Bearer ${authSession.access_token}`;
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers,
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           courseId: document.getElementById("order-course-id").value,
           purchaseCode: currentPurchaseCode,

@@ -1,15 +1,31 @@
-async function getAuthenticatedUser(event) {
-  const token = String(event.headers.authorization || event.headers.Authorization || "").replace(/^Bearer\s+/i, "").trim();
-  const url = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
-  const key = process.env.SUPABASE_ANON_KEY;
-  if (!token || !url || !key) return null;
+const { neon } = require("@neondatabase/serverless");
 
-  const response = await fetch(`${url}/auth/v1/user`, {
-    headers: { Authorization: `Bearer ${token}`, apikey: key }
-  });
-  if (!response.ok) return null;
-  const user = await response.json();
-  return user?.id && user?.email ? { id: user.id, email: user.email } : null;
+const sql = neon(process.env.DATABASE_URL);
+const COOKIE_NAME = "nix_session";
+
+function parseCookies(header) {
+  return Object.fromEntries(String(header || "").split(";").map(part => {
+    const index = part.indexOf("=");
+    return index < 0 ? ["", ""] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }).filter(([key]) => key));
 }
 
-module.exports = { getAuthenticatedUser };
+async function getAuthenticatedUser(event) {
+  const token = parseCookies(event.headers.cookie || event.headers.Cookie)[COOKIE_NAME];
+  if (!token) return null;
+  const crypto = require("crypto");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  try {
+    const rows = await sql`
+      SELECT u.id, u.email
+      FROM user_sessions s JOIN app_users u ON u.id = s.user_id
+      WHERE s.token_hash = ${tokenHash} AND s.expires_at > NOW() AND u.disabled_at IS NULL
+      LIMIT 1
+    `;
+    return rows[0] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { COOKIE_NAME, getAuthenticatedUser };
