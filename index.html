@@ -392,6 +392,11 @@
   .btn-save:hover { filter: brightness(1.1); }
 
   .course-description { min-height: 42px; margin: 8px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .detail-trigger { width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+  .detail-trigger h3 { transition: color .2s; }
+  .detail-trigger:hover h3 { color: var(--amber-hi); }
+  .product-detail-image { width: 100%; max-height: 340px; object-fit: cover; border-radius: 8px; }
+  .product-detail-description { margin: 18px 0; white-space: pre-wrap; color: var(--muted); line-height: 1.65; }
   .sale-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
   .price { color: var(--amber-hi); font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 700; }
   .buy-btn:disabled { cursor: not-allowed; opacity: .45; }
@@ -771,6 +776,15 @@
   </div>
 </div>
 
+<div class="modal" id="product-detail-modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+  <div class="modal-box" style="max-width:620px">
+    <div class="modal-head"><h2 id="product-detail-title"></h2><button class="modal-close" type="button" onclick="closeProductDetail()" aria-label="Đóng">×</button></div>
+    <img class="product-detail-image" id="product-detail-image" alt="">
+    <p class="product-detail-description" id="product-detail-description"></p>
+    <div class="sale-row"><span class="price" id="product-detail-price"></span><button class="btn-primary" id="product-detail-buy" type="button">Mua tài khoản</button></div>
+  </div>
+</div>
+
 <div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
   <div class="modal-box" style="max-width:440px">
     <div class="modal-head"><h2 id="auth-title">Tài khoản Nixart</h2><button class="modal-close" type="button" onclick="closeAuth()" aria-label="Đóng">×</button></div>
@@ -1110,7 +1124,7 @@
     const assetLabel = isAccount ? "TÀI KHOẢN" : contentType === "model" ? "MODEL MIỄN PHÍ" : "ADDON MIỄN PHÍ";
     return `
       <article class="card">
-        <div class="thumb">
+        <div class="thumb${isAccount ? " detail-trigger" : ""}" ${isAccount ? `role="button" tabindex="0" onclick="openProductDetail('${esc(course.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openProductDetail('${esc(course.id)}')}"` : ""}>
           <span class="badge ${isFreeAsset || isAccount ? "asset" : status}"><span class="dot"></span>${isFreeAsset || isAccount ? assetLabel : LABELS[status]}</span>
           <img src="${esc(course.image)}" alt="${esc(course.title)}" onerror="this.src='${FALLBACK_IMAGE}'">
         </div>
@@ -1119,7 +1133,7 @@
           ${isFreeAsset || isAccount ? "" : `
             <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
             <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>`}
-          ${course.description ? `<p class="course-description">${esc(course.description)}</p>` : ""}
+          ${isAccount ? `<button class="detail-trigger" type="button" onclick="openProductDetail('${esc(course.id)}')"><span>Xem chi tiết sản phẩm</span></button>` : course.description ? `<p class="course-description">${esc(course.description)}</p>` : ""}
           ${isFreeAsset && course.downloadUrl ? `
             <div class="sale-row">
               <span class="free-label">FREE</span>
@@ -1220,6 +1234,19 @@
     const value = document.getElementById("f-image").value.trim();
     document.getElementById("f-preview").src = value || PREVIEW_IMAGE;
   }
+
+  function openProductDetail(courseId) {
+    const course = state.courses.find(item => item.id === courseId && normalizeContentType(item.contentType) === "account");
+    if (!course) return;
+    document.getElementById("product-detail-title").textContent = course.title;
+    document.getElementById("product-detail-image").src = course.image || FALLBACK_IMAGE;
+    document.getElementById("product-detail-description").textContent = course.description || "Chưa có mô tả.";
+    document.getElementById("product-detail-price").textContent = formatPrice(course.price);
+    document.getElementById("product-detail-buy").onclick = () => { closeProductDetail(); openOrder(course.id); };
+    document.getElementById("product-detail-modal").classList.add("open");
+  }
+
+  function closeProductDetail() { document.getElementById("product-detail-modal").classList.remove("open"); }
 
   function switchCatalog(catalog) {
     activeCatalog = catalog === "accounts" ? "accounts" : "learning";
@@ -1444,6 +1471,9 @@
   document.getElementById("order-form").addEventListener("submit", submitOrder);
   document.getElementById("order-modal").addEventListener("click", event => {
     if (event.target.id === "order-modal") closeOrder();
+  });
+  document.getElementById("product-detail-modal").addEventListener("click", event => {
+    if (event.target.id === "product-detail-modal") closeProductDetail();
   });
   document.getElementById("f-preview").addEventListener("error", function () {
     this.src = PREVIEW_IMAGE;
