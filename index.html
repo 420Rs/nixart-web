@@ -856,6 +856,7 @@
   let currentPurchaseCode = "";
   let activeCatalog = "learning";
   let authUser = null;
+  let ordersTimer = null;
 
   function cloneDefaultState() {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -1002,14 +1003,19 @@
     renderAuthState();
   }
 
-  function closeMyOrders() { document.getElementById("orders-modal").classList.remove("open"); }
+  function closeMyOrders() {
+    clearTimeout(ordersTimer);
+    document.getElementById("orders-modal").classList.remove("open");
+  }
 
   async function openMyOrders() {
     if (!authUser) { openAuth(); return; }
     const modal = document.getElementById("orders-modal");
     const list = document.getElementById("orders-list");
+    const firstLoad = !modal.classList.contains("open");
+    clearTimeout(ordersTimer);
     modal.classList.add("open");
-    list.innerHTML = `<p class="empty">Đang tải...</p>`;
+    if (firstLoad) list.innerHTML = `<p class="empty">Đang tải...</p>`;
     try {
       const response = await fetch("/api/orders", { credentials: "same-origin" });
       const data = await response.json();
@@ -1022,6 +1028,8 @@
         </div>`).join("") : `<p class="empty">Bạn chưa có đơn tài khoản nào.</p>`;
     } catch (error) {
       list.innerHTML = `<p class="empty">${esc(error.message)}</p>`;
+    } finally {
+      if (modal.classList.contains("open")) ordersTimer = setTimeout(openMyOrders, 5000);
     }
   }
 
