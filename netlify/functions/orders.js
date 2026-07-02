@@ -142,10 +142,9 @@ exports.handler = async (event) => {
     const duplicate = await sql`
       SELECT id FROM purchase_orders
       WHERE purchase_code = ${purchaseCode}
-         OR (email = ${email} AND course_id = ${courseId} AND status IN ('pending', 'processing', 'approved'))
       LIMIT 1
     `;
-    if (duplicate.length) return json(409, { error: "Yeu cau nay da ton tai. Vui long cho admin xu ly" });
+    if (duplicate.length) return json(409, { error: "Ma don da ton tai. Vui long tao lai ma moi" });
 
     const id = crypto.randomUUID();
     const token = crypto.randomBytes(32).toString("hex");
