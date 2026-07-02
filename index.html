@@ -327,7 +327,12 @@
   .account-actions button { padding: 8px 12px; }
   .auth-email { color: var(--amber-hi); font: 11px 'JetBrains Mono', monospace; align-self: center; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
   .orders-list { display: grid; gap: 10px; margin-top: 16px; }
-  .delivery-box { margin-top: 10px; padding: 12px; white-space: pre-wrap; word-break: break-word; background: #100c08; border: 1px solid #59452e; border-radius: 7px; color: #ffc46b; user-select: all; }
+  .delivery-box { display: grid; gap: 7px; margin-top: 10px; padding: 12px; background: #100c08; border: 1px solid #59452e; border-radius: 7px; }
+  .delivery-line { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 7px; border-bottom: 1px solid #2d241b; }
+  .delivery-line:last-child { padding-bottom: 0; border-bottom: 0; }
+  .delivery-line span { flex: 1; color: #ffc46b; font: 13px/1.5 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-word; }
+  .delivery-line a { color: #69b7ff; text-decoration: underline; }
+  .delivery-copy { flex: 0 0 auto; padding: 4px 8px; color: var(--amber-hi); background: #241b12; border: 1px solid #59452e; font-size: 10px; }
   .order-item { padding: 13px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 7px; }
   .order-item strong { display: block; margin-bottom: 6px; }
   .order-item span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; }
@@ -943,6 +948,24 @@
     return Object.prototype.hasOwnProperty.call(LABELS, status) ? status : "pending";
   }
 
+  function renderDeliveryContent(value) {
+    return String(value || "").split(/\r?\n/).filter(line => line.trim()).map(line => {
+      const content = line.split(/(https?:\/\/[^\s]+)/g).map(part => /^https?:\/\//i.test(part)
+        ? `<a href="${esc(part)}" target="_blank" rel="noopener noreferrer">${esc(part)}</a>`
+        : esc(part)).join("");
+      return `<div class="delivery-line"><span>${content}</span><button class="delivery-copy" type="button" data-copy="${esc(line)}" onclick="copyDelivery(this)">Copy</button></div>`;
+    }).join("");
+  }
+
+  async function copyDelivery(button) {
+    try {
+      await navigator.clipboard.writeText(button.dataset.copy || "");
+      toast("Đã copy");
+    } catch (_) {
+      toast("Không copy được");
+    }
+  }
+
   async function initAuth() {
     try {
       const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
@@ -1038,7 +1061,7 @@
       list.innerHTML = data.orders.length ? data.orders.map(order => `
         <div class="order-item"><strong>${esc(order.course_title)}</strong>
           <span>${esc(order.purchase_code)} · ${formatPrice(order.amount)} · ${labels[order.status] || esc(order.status)}</span>
-          ${order.status === "approved" && order.delivery_content ? `<div class="delivery-box">${esc(order.delivery_content)}</div>` : ""}
+          ${order.status === "approved" && order.delivery_content ? `<div class="delivery-box">${renderDeliveryContent(order.delivery_content)}</div>` : ""}
         </div>`).join("") : `<p class="empty">Bạn chưa có đơn tài khoản nào.</p>`;
     } catch (error) {
       list.innerHTML = `<p class="empty">${esc(error.message)}</p>`;
