@@ -44,12 +44,14 @@ async function ensureOrdersTable() {
       drive_permission_id VARCHAR(300),
       delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive',
       auth_user_id VARCHAR(100),
+      delivery_content TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       reviewed_at TIMESTAMPTZ
     )
   `;
   await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive'`;
   await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS auth_user_id VARCHAR(100)`;
+  await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_content TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders (status, created_at DESC)`;
 }
 
@@ -91,7 +93,7 @@ exports.handler = async (event) => {
       if (!user) return json(401, { error: "Vui long dang nhap" });
       await ensureOrdersTable();
       const rows = await sql`
-        SELECT purchase_code, course_title, amount, status, created_at, reviewed_at
+        SELECT purchase_code, course_title, amount, status, delivery_content, created_at, reviewed_at
         FROM purchase_orders
         WHERE auth_user_id = ${user.id} AND delivery_type = 'manual'
         ORDER BY created_at DESC LIMIT 100

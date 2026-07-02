@@ -24,7 +24,7 @@ function page(title, content, statusCode = 200) {
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
     },
     body: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)}</title><style>
-      body{margin:0;background:#100c08;color:#f3ead9;font:16px system-ui,sans-serif}.box{max-width:620px;margin:8vh auto;padding:28px;background:#1f1812;border:1px solid #3a2e1f;border-radius:12px}h1{color:#ffc46b}.row{padding:10px 0;border-bottom:1px solid #3a2e1f}.label{display:block;color:#9c8c74;font-size:12px;text-transform:uppercase}.actions{display:flex;gap:12px;margin-top:24px}button{padding:12px 18px;border:0;border-radius:7px;font-weight:700;cursor:pointer}.approve{background:#4ddb8e;color:#08210f}.reject{background:#ff4d3d;color:#fff}code{color:#ffc46b}p{line-height:1.55}</style></head><body><main class="box"><h1>${esc(title)}</h1>${content}</main></body></html>`
+      body{margin:0;background:#100c08;color:#f3ead9;font:16px system-ui,sans-serif}.box{max-width:620px;margin:8vh auto;padding:28px;background:#1f1812;border:1px solid #3a2e1f;border-radius:12px}h1{color:#ffc46b}.row{padding:10px 0;border-bottom:1px solid #3a2e1f}.label{display:block;color:#9c8c74;font-size:12px;text-transform:uppercase}.actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}textarea{width:100%;min-height:130px;box-sizing:border-box;padding:12px;border:1px solid #59452e;border-radius:7px;background:#100c08;color:#fff;resize:vertical}button{padding:12px 18px;border:0;border-radius:7px;font-weight:700;cursor:pointer}.approve{background:#4ddb8e;color:#08210f}.reject{background:#ff4d3d;color:#fff}code{color:#ffc46b}p{line-height:1.55}</style></head><body><main class="box"><h1>${esc(title)}</h1>${content}</main></body></html>`
   };
 }
 
@@ -62,6 +62,7 @@ exports.handler = async (event) => {
   if (!/^[a-f0-9]{64}$/.test(token)) return page("Liên kết không hợp lệ", "<p>Token duyệt bị thiếu hoặc không hợp lệ.</p>", 400);
 
   try {
+    await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_content TEXT`;
     if (event.httpMethod === "GET") {
       const rows = await sql`
         SELECT purchase_code, course_title, email, payer_name, transfer_reference, amount, status, created_at, delivery_type
@@ -82,13 +83,15 @@ exports.handler = async (event) => {
         <p>Chỉ bấm chấp nhận sau khi đã kiểm tra tiền trong ứng dụng ngân hàng.</p>
         <form method="post" class="actions">
           <input type="hidden" name="token" value="${esc(token)}">
-          <button class="approve" name="action" value="approve">Chấp nhận và cấp Drive</button>
+          ${order.delivery_type === "manual" ? '<textarea name="deliveryContent" maxlength="4000" required placeholder="Nhập tài khoản, mật khẩu và hướng dẫn sử dụng"></textarea>' : ''}
+          <button class="approve" name="action" value="approve">${order.delivery_type === "manual" ? "Duyệt và giao tài khoản" : "Chấp nhận và cấp Drive"}</button>
           <button class="reject" name="action" value="reject">Từ chối</button>
         </form>`);
     }
 
     if (event.httpMethod !== "POST") return page("Không hỗ trợ", "<p>Phương thức không được hỗ trợ.</p>", 405);
     const action = params.get("action");
+    const deliveryContent = String(params.get("deliveryContent") || "").trim().slice(0, 4000);
     if (!['approve', 'reject'].includes(action)) return page("Yêu cầu không hợp lệ", "<p>Hành động không hợp lệ.</p>", 400);
 
     const claimed = await sql`
@@ -105,8 +108,12 @@ exports.handler = async (event) => {
     }
 
     if (order.delivery_type === "manual") {
-      await sql`UPDATE purchase_orders SET status = 'approved', reviewed_at = NOW() WHERE id = ${order.id}`;
-      return page("Đã duyệt thanh toán", `<p>Đơn của <strong>${esc(order.email)}</strong> đã được duyệt. Hãy giao thông tin tài khoản cho khách qua kênh riêng.</p>`);
+      if (!deliveryContent) {
+        await sql`UPDATE purchase_orders SET status = 'pending' WHERE id = ${order.id}`;
+        return page("Thiếu thông tin tài khoản", "<p>Nhập thông tin tài khoản trước khi duyệt đơn.</p>", 400);
+      }
+      await sql`UPDATE purchase_orders SET status = 'approved', delivery_content = ${deliveryContent}, reviewed_at = NOW() WHERE id = ${order.id}`;
+      return page("Đã giao tài khoản", `<p>Thông tin đã xuất hiện trong mục <strong>Đơn của tôi</strong> của ${esc(order.email)}.</p>`);
     }
 
     try {
