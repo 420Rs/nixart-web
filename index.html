@@ -684,6 +684,11 @@
         </div>
       </div>
       <label id="sale-field"><input id="f-sale" type="checkbox">Cho phép đặt mua sản phẩm này</label>
+      <label id="free-field"><input id="f-free" type="checkbox" onchange="toggleContentFields()">Phát hành khóa học miễn phí</label>
+      <div id="free-link-field" hidden>
+        <label for="f-free-url">Link truy cập khóa học miễn phí *</label>
+        <input id="f-free-url" type="url" placeholder="https://drive.google.com/...">
+      </div>
       <p class="hint" id="sale-hint" style="margin:8px 0 16px">Folder ID chỉ được gửi lên server. Nếu khóa học đã có folder, để trống ô này sẽ giữ nguyên cấu hình cũ.</p>
 
       <div class="btns">
@@ -1144,6 +1149,7 @@
     const contentType = normalizeContentType(course.contentType);
     const isFreeAsset = contentType === "model" || contentType === "addon";
     const isAccount = contentType === "account";
+    const isFreeCourse = contentType === "course" && course.freeAccess && /^https:\/\//i.test(course.freeAccessUrl || "");
     const assetLabel = isAccount ? "TÀI KHOẢN" : contentType === "model" ? "MODEL MIỄN PHÍ" : "ADDON MIỄN PHÍ";
     return `
       <article class="card">
@@ -1157,7 +1163,11 @@
             <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
             <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>`}
           ${isAccount ? `<button class="detail-trigger" type="button" onclick="openProductDetail('${esc(course.id)}')"><span>Xem chi tiết sản phẩm</span></button>` : course.description ? `<p class="course-description">${esc(course.description)}</p>` : ""}
-          ${isFreeAsset && course.downloadUrl ? `
+          ${isFreeCourse ? `
+            <div class="sale-row">
+              <span class="free-label">FREE</span>
+              <a class="download-btn" href="${esc(course.freeAccessUrl)}" target="_blank" rel="noopener noreferrer">Học miễn phí</a>
+            </div>` : isFreeAsset && course.downloadUrl ? `
             <div class="sale-row">
               <span class="free-label">FREE</span>
               <a class="download-btn" href="${esc(directDownloadUrl(course.downloadUrl))}" target="_blank" rel="noopener noreferrer" download>Tải xuống</a>
@@ -1202,8 +1212,8 @@
               <span>${normalizeContentType(course.contentType).toUpperCase()}</span>
               <span>${progress}%</span>
               <span>${esc(course.eta || "-")}</span>
-              <span>${normalizeContentType(course.contentType) === "course" ? (course.saleEnabled ? formatPrice(course.price) : "Chưa bán") : "Miễn phí"}</span>
-              <span>${normalizeContentType(course.contentType) === "course" ? (course.deliveryReady ? "Drive sẵn sàng" : "Chưa có Drive") : normalizeContentType(course.contentType) === "account" ? "Giao thủ công" : (course.downloadUrl ? "Có link tải" : "Chưa có link tải")}</span>
+              <span>${normalizeContentType(course.contentType) === "course" ? (course.freeAccess ? "Miễn phí" : course.saleEnabled ? formatPrice(course.price) : "Chưa bán") : "Miễn phí"}</span>
+              <span>${normalizeContentType(course.contentType) === "course" ? (course.freeAccess ? "Có link học" : course.deliveryReady ? "Drive sẵn sàng" : "Chưa có Drive") : normalizeContentType(course.contentType) === "account" ? "Giao thủ công" : (course.downloadUrl ? "Có link tải" : "Chưa có link tải")}</span>
             </div>
           </div>
           <div class="acts">
@@ -1282,12 +1292,16 @@
     const type = normalizeContentType(document.getElementById("f-type").value);
     const isFreeAsset = type === "model" || type === "addon";
     const isAccount = type === "account";
+    const isFreeCourse = type === "course" && document.getElementById("f-free").checked;
     document.getElementById("download-field").hidden = !isFreeAsset;
     document.getElementById("progress-fields").hidden = isFreeAsset || isAccount;
-    document.getElementById("commerce-fields").hidden = isFreeAsset;
-    document.getElementById("drive-field").hidden = isAccount;
-    document.getElementById("sale-field").hidden = isFreeAsset;
-    document.getElementById("sale-hint").hidden = isFreeAsset || isAccount;
+    document.getElementById("commerce-fields").hidden = isFreeAsset || isFreeCourse;
+    document.getElementById("drive-field").hidden = isAccount || isFreeCourse;
+    document.getElementById("sale-field").hidden = isFreeAsset || isFreeCourse;
+    document.getElementById("free-field").hidden = type !== "course";
+    document.getElementById("free-link-field").hidden = !isFreeCourse;
+    document.getElementById("sale-hint").hidden = isFreeAsset || isAccount || isFreeCourse;
+    if (isFreeCourse) document.getElementById("f-sale").checked = false;
   }
 
   async function submitForm() {
@@ -1300,6 +1314,8 @@
     const existingCourse = editId === "" ? null : state.courses[parseInt(editId, 10)];
     const contentType = normalizeContentType(document.getElementById("f-type").value);
     const downloadUrl = document.getElementById("f-download").value.trim();
+    const freeAccess = contentType === "course" && document.getElementById("f-free").checked;
+    const freeAccessUrl = document.getElementById("f-free-url").value.trim();
     const course = {
       id: existingCourse?.id || `course-${Date.now().toString(36)}`,
       title,
@@ -1307,9 +1323,11 @@
       description: document.getElementById("f-description").value.trim(),
       contentType,
       downloadUrl,
-      price: contentType === "model" || contentType === "addon" ? 0 : Math.max(0, parseInt(document.getElementById("f-price").value, 10) || 0),
-      saleEnabled: !["model", "addon"].includes(contentType) && document.getElementById("f-sale").checked,
-      deliveryReady: contentType === "account" || existingCourse?.deliveryReady || Boolean(document.getElementById("f-drive").value.trim()),
+      freeAccess,
+      freeAccessUrl,
+      price: freeAccess || contentType === "model" || contentType === "addon" ? 0 : Math.max(0, parseInt(document.getElementById("f-price").value, 10) || 0),
+      saleEnabled: !freeAccess && !["model", "addon"].includes(contentType) && document.getElementById("f-sale").checked,
+      deliveryReady: freeAccess || contentType === "account" || existingCourse?.deliveryReady || Boolean(document.getElementById("f-drive").value.trim()),
       driveFolderId: document.getElementById("f-drive").value.trim(),
       status: normalizeStatus(document.getElementById("f-status").value),
       progress: clampProgress(document.getElementById("f-progress").value),
@@ -1318,6 +1336,10 @@
 
     if (["model", "addon"].includes(contentType) && !/^https:\/\//i.test(downloadUrl)) {
       toast("Model hoặc Addon cần link tải HTTPS");
+      return;
+    }
+    if (freeAccess && !/^https:\/\//i.test(freeAccessUrl)) {
+      toast("Khóa học miễn phí cần link truy cập HTTPS");
       return;
     }
     if (course.saleEnabled && (!course.price || !course.deliveryReady)) {
@@ -1348,6 +1370,8 @@
     document.getElementById("f-description").value = course.description || "";
     document.getElementById("f-type").value = normalizeContentType(course.contentType);
     document.getElementById("f-download").value = course.downloadUrl || "";
+    document.getElementById("f-free").checked = Boolean(course.freeAccess);
+    document.getElementById("f-free-url").value = course.freeAccessUrl || "";
     document.getElementById("f-price").value = course.price || "";
     document.getElementById("f-drive").value = "";
     document.getElementById("f-sale").checked = Boolean(course.saleEnabled);
@@ -1369,13 +1393,14 @@
 
   function resetForm() {
     document.getElementById("f-id").value = "";
-    ["f-title", "f-image", "f-eta", "f-description", "f-price", "f-drive", "f-download"].forEach(id => {
+    ["f-title", "f-image", "f-eta", "f-description", "f-price", "f-drive", "f-download", "f-free-url"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("f-status").value = "doing";
     document.getElementById("f-progress").value = 0;
     document.getElementById("f-type").value = "course";
     document.getElementById("f-sale").checked = false;
+    document.getElementById("f-free").checked = false;
     document.getElementById("form-title").textContent = "Thêm khóa học mới";
     toggleContentFields();
     updatePreview();

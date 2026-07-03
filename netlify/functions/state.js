@@ -119,6 +119,10 @@ exports.handler = async (event) => {
               downloadUrl: /^https:\/\//i.test(String(course.downloadUrl || "").trim())
                 ? String(course.downloadUrl).trim().slice(0, 2000)
                 : "",
+              freeAccess: course.contentType === "course" && Boolean(course.freeAccess),
+              freeAccessUrl: /^https:\/\//i.test(String(course.freeAccessUrl || "").trim())
+                ? String(course.freeAccessUrl).trim().slice(0, 2000)
+                : "",
               price: Math.max(0, Math.min(1000000000, parseInt(course.price, 10) || 0)),
               saleEnabled: Boolean(course.saleEnabled),
               driveFolderId: submittedFolder || oldFolders.get(id) || "",
