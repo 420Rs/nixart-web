@@ -7,6 +7,7 @@ const handlers = {
   "/api/auth": "./netlify/functions/auth",
   "/api/traffic": "./netlify/functions/traffic",
   "/api/orders": "./netlify/functions/orders",
+  "/api/sepay": "./netlify/functions/sepay",
   "/review": "./netlify/functions/review"
 };
 

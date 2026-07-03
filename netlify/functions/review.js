@@ -70,7 +70,7 @@ exports.handler = async (event) => {
       `;
       const order = rows[0];
       if (!order) return page("Không tìm thấy đơn", "<p>Liên kết không tồn tại hoặc đã bị xóa.</p>", 404);
-      if (order.status !== "pending") return page("Đơn đã được xử lý", `<p>Trạng thái hiện tại: <code>${esc(order.status)}</code>.</p>`);
+      if (!["pending", "paid"].includes(order.status)) return page("Đơn đã được xử lý", `<p>Trạng thái hiện tại: <code>${esc(order.status)}</code>.</p>`);
 
       return page("Xác nhận thanh toán", `
         <div class="row"><span class="label">Khóa học</span>${esc(order.course_title)}</div>
@@ -96,7 +96,7 @@ exports.handler = async (event) => {
 
     const claimed = await sql`
       UPDATE purchase_orders SET status = 'processing'
-      WHERE token_hash = ${tokenHash} AND status = 'pending'
+      WHERE token_hash = ${tokenHash} AND status IN ('pending', 'paid')
       RETURNING id, course_title, drive_folder_id, email, delivery_type
     `;
     const order = claimed[0];
