@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "VOICE STUDIO - bang theo doi tien do long tieng",
   "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "@neondatabase/serverless": "0.10.4",
     "googleapis": "^173.0.0"

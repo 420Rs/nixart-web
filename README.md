@@ -1,5 +1,9 @@
 # Nixart Web
 
+## Deploy miễn phí trên Render
+
+Repo có sẵn `render.yaml`. Tạo Blueprint từ repo GitHub này rồi nhập bốn biến bí mật được yêu cầu: `DATABASE_URL`, `ADMIN_PASSWORD`, `DISCORD_WEBHOOK_URL`, `GOOGLE_SERVICE_ACCOUNT_JSON`. Sau khi deploy, gắn domain `nixart.io.vn` trong Settings > Custom Domains.
+
 Trang tiến độ và bán khóa học, triển khai trên Netlify với Neon PostgreSQL.
 
 ## Luồng đặt mua
