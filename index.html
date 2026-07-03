@@ -327,6 +327,10 @@
   .account-actions button { padding: 8px 12px; }
   .auth-email { color: var(--amber-hi); font: 11px 'JetBrains Mono', monospace; align-self: center; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
   .orders-list { display: grid; gap: 10px; margin-top: 16px; }
+  .traffic-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .traffic-card { padding: 14px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; }
+  .traffic-card b { display: block; color: var(--amber-hi); font: 700 22px 'JetBrains Mono', monospace; }
+  .traffic-card span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .8px; }
   .delivery-box { display: grid; gap: 7px; margin-top: 10px; padding: 12px; background: #100c08; border: 1px solid #59452e; border-radius: 7px; }
   .delivery-line { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 7px; border-bottom: 1px solid #2d241b; }
   .delivery-line:last-child { padding-bottom: 0; border-bottom: 0; }
@@ -494,6 +498,7 @@
 
   @media (max-width: 620px) {
     .row, .row-img { grid-template-columns: 1fr; }
+    .traffic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .item { grid-template-columns: 60px 1fr; }
     .item .ph { width: 60px; height: 38px; }
     .item .acts { grid-column: 1 / -1; }
@@ -621,6 +626,16 @@
       <label for="s-bank-name">Tên chủ tài khoản</label>
       <input id="s-bank-name" placeholder="NGUYEN VAN A">
       <button class="btn-primary" type="button" onclick="saveStudio()">Lưu thông tin</button>
+    </div>
+
+    <div class="panel">
+      <h2>Traffic website</h2>
+      <div class="traffic-grid">
+        <div class="traffic-card"><b id="traffic-total">-</b><span>Tổng lượt</span></div>
+        <div class="traffic-card"><b id="traffic-today">-</b><span>Hôm nay</span></div>
+        <div class="traffic-card"><b id="traffic-week">-</b><span>7 ngày</span></div>
+        <div class="traffic-card"><b id="traffic-online">-</b><span>Online 5 phút</span></div>
+      </div>
     </div>
 
     <div class="panel">
@@ -874,6 +889,7 @@
   const PREVIEW_IMAGE = "https://placehold.co/600x340/1f1812/ff9e2c?text=ANH";
 
   const API_URL = "/api/state";
+  const TRAFFIC_URL = "/api/traffic";
   let state = cloneDefaultState();
   let brandClicks = 0;
   let brandTimer = null;
@@ -909,6 +925,40 @@
       state = cloneDefaultState();
       console.error("Khong tai duoc du lieu:", error);
     }
+  }
+
+  function visitorId() {
+    const key = "nixart_visitor_id";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }
+
+  async function trackVisit() {
+    if (sessionStorage.getItem("nixart_visit_tracked")) return;
+    sessionStorage.setItem("nixart_visit_tracked", "1");
+    try {
+      await fetch(TRAFFIC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitorId: visitorId(), path: location.pathname || "/" })
+      });
+    } catch (_) {}
+  }
+
+  async function loadTraffic() {
+    try {
+      const response = await fetch(TRAFFIC_URL, { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      document.getElementById("traffic-total").textContent = Number(data.total || 0).toLocaleString("vi-VN");
+      document.getElementById("traffic-today").textContent = Number(data.today || 0).toLocaleString("vi-VN");
+      document.getElementById("traffic-week").textContent = Number(data.week || 0).toLocaleString("vi-VN");
+      document.getElementById("traffic-online").textContent = Number(data.online || 0).toLocaleString("vi-VN");
+    } catch (_) {}
   }
 
   // Ghi du lieu len server. Tra ve true neu thanh cong.
@@ -1234,6 +1284,7 @@
     document.getElementById("admin-view").setAttribute("aria-hidden", "false");
     document.getElementById("public-view").setAttribute("aria-hidden", "true");
     renderAdmin();
+    loadTraffic();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1543,6 +1594,7 @@
   ]).then(() => {
     renderAll();
     hideWorkshopLoader();
+    trackVisit();
   });
 </script>
 
