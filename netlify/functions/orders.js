@@ -161,17 +161,25 @@ exports.handler = async (event) => {
     const baseUrl = String(process.env.URL || process.env.DEPLOY_PRIME_URL || `https://${event.headers.host}`).replace(/\/$/, "");
     const reviewUrl = `${baseUrl}/review?token=${encodeURIComponent(token)}`;
 
-    try {
-      await notifyDiscord({
-        courseTitle: String(course.title), amount: Number(course.price), purchaseCode,
-        email, payerName, transferReference, deliveryType
-      }, reviewUrl);
-    } catch (error) {
-      await sql`DELETE FROM purchase_orders WHERE id = ${id}`;
-      throw error;
+    if (deliveryType === "manual") {
+      try {
+        await notifyDiscord({
+          courseTitle: String(course.title), amount: Number(course.price), purchaseCode,
+          email, payerName, transferReference, deliveryType
+        }, reviewUrl);
+      } catch (error) {
+        await sql`DELETE FROM purchase_orders WHERE id = ${id}`;
+        throw error;
+      }
     }
 
-    return json(201, { ok: true, purchaseCode, message: "Da gui yeu cau. Vui long cho admin xac nhan" });
+    return json(201, {
+      ok: true,
+      purchaseCode,
+      message: deliveryType === "manual"
+        ? "Da gui don. Admin se giao tai khoan sau khi thanh toan."
+        : "Da tao don. Sepay se tu xac nhan va cap Drive khi tien vao."
+    });
   } catch (error) {
     console.error("orders error", error);
     return json(500, { error: "Khong gui duoc yeu cau. Vui long thu lai sau" });
