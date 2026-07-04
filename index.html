@@ -261,6 +261,8 @@
   .contact a:hover { transform: translateY(-2px); }
   .contact a.fb:hover { color: #fff; background: #1877f2; border-color: #1877f2; }
   .contact a.dc:hover { color: #fff; background: #5865f2; border-color: #5865f2; }
+  .contact a.preview { width: auto; padding: 0 10px; color: #08210f; background: var(--green); border-color: var(--green); font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .8px; text-decoration: none; text-transform: uppercase; }
+  .contact a.preview:hover { color: #08210f; background: var(--green); border-color: var(--green); filter: brightness(1.08); }
   .contact a svg { width: 17px; height: 17px; fill: currentColor; }
 
   #admin-view { display: none; }
@@ -1183,15 +1185,17 @@
     });
   }
 
-  function contactIcons() {
+  function contactIcons(previewUrl = "") {
     const fb = String(state.facebook || "").trim();
     const dc = String(state.discord || "").trim();
-    if (!fb && !dc) return "";
+    const preview = String(previewUrl || "").trim();
+    if (!fb && !dc && !preview) return "";
     const fbSvg = `<svg viewBox="0 0 24 24"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>`;
     const dcSvg = `<svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.45 2.9a.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.25a18.3 18.3 0 0 0-5.5 0c-.16-.39-.4-.87-.61-1.25a.08.08 0 0 0-.08-.04c-1.7.3-3.33.8-4.87 1.47a.07.07 0 0 0-.03.03C.53 9.04-.32 13.58.1 18.06a.08.08 0 0 0 .03.06 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .09-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.11c-.65-.25-1.27-.55-1.87-.89a.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.64-1.87.89a.08.08 0 0 0-.04.11c.36.7.78 1.36 1.22 2a.08.08 0 0 0 .09.03 19.8 19.8 0 0 0 6-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.69-3.55-13.67a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>`;
     let html = `<div class="contact">`;
     if (fb) html += `<a class="fb" href="${esc(fb)}" target="_blank" rel="noopener" title="Facebook">${fbSvg}</a>`;
     if (dc) html += `<a class="dc" href="${esc(dc)}" target="_blank" rel="noopener" title="Discord">${dcSvg}</a>`;
+    if (/^https:\/\//i.test(preview)) html += `<a class="preview" href="${esc(preview)}" target="_blank" rel="noopener noreferrer">Preview</a>`;
     html += `</div>`;
     return html;
   }
@@ -1231,12 +1235,7 @@
                 ${course.deliveryReady ? (isAccount ? "Mua tài khoản" : "Mua khóa học") : "Chưa mở bán"}
               </button>
             </div>` : ""}
-          ${/^https:\/\//i.test(course.officialUrl || "") ? `
-            <div class="sale-row">
-              <span class="free-label">OFFICIAL</span>
-              <a class="download-btn" href="${esc(course.officialUrl)}" target="_blank" rel="noopener noreferrer">Trang chính thống</a>
-            </div>` : ""}
-          ${contactIcons()}
+          ${contactIcons(course.officialUrl)}
         </div>
       </article>`;
   }
