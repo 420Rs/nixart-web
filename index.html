@@ -1232,7 +1232,7 @@
             <div class="sale-row">
               <span class="price">${formatPrice(course.price)}</span>
               <button class="btn-primary buy-btn" type="button" onclick="openOrder('${esc(course.id)}')" ${course.deliveryReady ? "" : "disabled"}>
-                ${course.deliveryReady ? (isAccount ? "Mua tài khoản" : "Mua khóa học") : "Chưa mở bán"}
+                ${course.deliveryReady ? (isAccount ? "Mua tài khoản" : "Thanh toán") : "Chưa mở bán"}
               </button>
             </div>` : ""}
           ${contactIcons(course.officialUrl)}
