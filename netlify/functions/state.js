@@ -119,6 +119,9 @@ exports.handler = async (event) => {
               downloadUrl: /^https:\/\//i.test(String(course.downloadUrl || "").trim())
                 ? String(course.downloadUrl).trim().slice(0, 2000)
                 : "",
+              officialUrl: /^https:\/\//i.test(String(course.officialUrl || "").trim())
+                ? String(course.officialUrl).trim().slice(0, 2000)
+                : "",
               freeAccess: course.contentType === "course" && Boolean(course.freeAccess),
               freeAccessUrl: /^https:\/\//i.test(String(course.freeAccessUrl || "").trim())
                 ? String(course.freeAccessUrl).trim().slice(0, 2000)
