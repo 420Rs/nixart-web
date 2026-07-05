@@ -509,6 +509,25 @@
   }
 
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .support-float {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 98;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid #59452e;
+    border-radius: 999px;
+    background: rgba(31,24,18,.94);
+    color: var(--amber-hi);
+    box-shadow: 0 14px 36px rgba(0,0,0,.45);
+    font: 700 11px 'JetBrains Mono', monospace;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+  }
+  .support-float:hover { border-color: var(--amber); transform: translateY(-1px); }
 
   @media (max-width: 620px) {
     .row, .row-img { grid-template-columns: 1fr; }
@@ -875,6 +894,7 @@
   </div>
 </div>
 
+<button class="support-float" type="button" onclick="showPreviewSupport()">Preview?</button>
 <div class="toast" id="toast">Đã cập nhật</div>
 
 <script>
@@ -1448,6 +1468,12 @@
     toastElement.textContent = message;
     toastElement.classList.add("show");
     setTimeout(() => toastElement.classList.remove("show"), 2200);
+  }
+
+  function showPreviewSupport() {
+    toast("Xem previews trước khi mua, liên hệ qua Discord");
+    const discord = String(state.discord || "").trim();
+    if (/^https:\/\//i.test(discord)) window.open(discord, "_blank", "noopener,noreferrer");
   }
 
   function updatePreview() {
