@@ -528,6 +528,23 @@
     text-transform: uppercase;
   }
   .support-float:hover { border-color: var(--amber); transform: translateY(-1px); }
+  .support-bubble {
+    position: fixed;
+    right: 18px;
+    bottom: 72px;
+    z-index: 98;
+    width: min(300px, calc(100vw - 36px));
+    padding: 14px;
+    border: 1px solid #59452e;
+    border-radius: 14px 14px 4px 14px;
+    background: rgba(31,24,18,.97);
+    box-shadow: 0 18px 46px rgba(0,0,0,.52);
+    color: var(--text);
+    pointer-events: auto;
+  }
+  .support-bubble p { color: var(--muted); font-size: 13px; line-height: 1.55; margin-bottom: 12px; }
+  .support-bubble strong { display: block; color: var(--amber-hi); margin-bottom: 5px; }
+  .support-bubble a { display: inline-flex; padding: 9px 12px; border-radius: 7px; background: #5865f2; color: #fff; font: 700 11px 'JetBrains Mono', monospace; text-decoration: none; text-transform: uppercase; letter-spacing: .7px; }
 
   @media (max-width: 620px) {
     .row, .row-img { grid-template-columns: 1fr; }
@@ -894,6 +911,11 @@
   </div>
 </div>
 
+<div class="support-bubble">
+  <strong>Cần xem preview?</strong>
+  <p>Xem previews trước khi mua, liên hệ qua Discord để mình gửi mẫu khóa học.</p>
+  <a id="support-discord-link" href="#" onclick="showPreviewSupport(); return false;">Discord</a>
+</div>
 <button class="support-float" type="button" onclick="showPreviewSupport()">Preview?</button>
 <div class="toast" id="toast">Đã cập nhật</div>
 
@@ -1313,6 +1335,9 @@
   function renderPublic() {
     setBrandText(document.getElementById("brand"), state.name);
     document.getElementById("tagline").textContent = state.tagline || "";
+    const supportLink = document.getElementById("support-discord-link");
+    const discord = String(state.discord || "").trim();
+    supportLink.href = /^https:\/\//i.test(discord) ? discord : "#";
 
     const visible = state.courses.filter(course => {
       const isAccount = normalizeContentType(course.contentType) === "account";
@@ -1471,8 +1496,8 @@
   }
 
   function showPreviewSupport() {
-    toast("Xem previews trước khi mua, liên hệ qua Discord");
     const discord = String(state.discord || "").trim();
+    toast("Xem previews trước khi mua, liên hệ qua Discord");
     if (/^https:\/\//i.test(discord)) window.open(discord, "_blank", "noopener,noreferrer");
   }
 
