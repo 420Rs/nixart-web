@@ -5,6 +5,8 @@ const path = require("path");
 const handlers = {
   "/api/state": "./netlify/functions/state",
   "/api/auth": "./netlify/functions/auth",
+  "/api/admin-orders": "./netlify/functions/admin-orders",
+  "/api/order-lookup": "./netlify/functions/order-lookup",
   "/api/traffic": "./netlify/functions/traffic",
   "/api/orders": "./netlify/functions/orders",
   "/api/sepay": "./netlify/functions/sepay",

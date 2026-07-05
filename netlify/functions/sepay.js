@@ -29,6 +29,7 @@ async function ensureTables() {
   `;
   await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_content TEXT`;
   await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_type VARCHAR(20) NOT NULL DEFAULT 'drive'`;
+  await sql`ALTER TABLE sepay_transactions ADD COLUMN IF NOT EXISTS match_status VARCHAR(30) NOT NULL DEFAULT 'received'`;
 }
 
 function validAuth(headers) {
@@ -92,10 +93,14 @@ exports.handler = async (event) => {
       RETURNING id, course_title, drive_folder_id, email, delivery_type
     `;
     const order = claimed[0];
-    if (!order) return json(200, { success: true, unmatched: true });
+    if (!order) {
+      await sql`UPDATE sepay_transactions SET match_status = 'unmatched' WHERE id = ${transactionId}`;
+      return json(200, { success: true, unmatched: true });
+    }
 
     if (order.delivery_type === "manual") {
       await sql`UPDATE purchase_orders SET status = 'paid', reviewed_at = NOW() WHERE id = ${order.id}`;
+      await sql`UPDATE sepay_transactions SET match_status = 'paid' WHERE id = ${transactionId}`;
       return json(200, { success: true, status: "paid" });
     }
 
@@ -106,9 +111,11 @@ exports.handler = async (event) => {
         SET status = 'approved', drive_permission_id = ${permissionId}, reviewed_at = NOW()
         WHERE id = ${order.id}
       `;
+      await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
       return json(200, { success: true, status: "approved" });
     } catch (error) {
       await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
+      await sql`UPDATE sepay_transactions SET match_status = 'drive_failed' WHERE id = ${transactionId}`;
       console.error("sepay drive grant error", error);
       return json(200, { success: true, status: "paid", delivery: "drive_failed" });
     }

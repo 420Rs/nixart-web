@@ -342,6 +342,18 @@
   .order-item { padding: 13px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 7px; }
   .order-item strong { display: block; margin-bottom: 6px; }
   .order-item span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; }
+  .lookup-box { margin: 0 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .lookup-box h2 { margin-bottom: 4px; font-size: 20px; }
+  .lookup-box p { margin-bottom: 14px; color: var(--muted); font-size: 13px; }
+  .lookup-result { margin-top: 12px; padding: 12px; border: 1px solid #59452e; border-radius: 7px; background: #100c08; color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .lookup-result strong { display: block; color: var(--amber-hi); margin-bottom: 6px; }
+  .admin-table-wrap { overflow-x: auto; margin-top: 14px; }
+  .admin-table { width: 100%; border-collapse: collapse; min-width: 780px; }
+  .admin-table th, .admin-table td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12px; vertical-align: top; }
+  .admin-table th { color: var(--amber-hi); font: 700 10px 'JetBrains Mono', monospace; letter-spacing: .8px; text-transform: uppercase; }
+  .admin-table td { color: var(--muted); }
+  .admin-table code { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .status-pill { display: inline-flex; padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--amber-hi); font: 700 10px 'JetBrains Mono', monospace; text-transform: uppercase; }
 
   textarea { min-height: 90px; resize: vertical; }
   input[type="checkbox"] { width: auto; margin: 0 8px 0 0; }
@@ -538,6 +550,16 @@
         <button class="btn-ghost" id="auth-logout" type="button" onclick="signOutUser()" hidden>Đăng xuất</button>
       </div>
     </nav>
+    <div class="lookup-box">
+      <h2>Tra cứu đơn hàng</h2>
+      <p>Nhập mã đơn NIX và email đã dùng khi thanh toán để xem trạng thái nhận tiền / giao khóa học.</p>
+      <div class="row">
+        <input id="lookup-code" placeholder="Mã đơn: NIX..." autocomplete="off">
+        <input id="lookup-email" type="email" placeholder="Email nhận khóa học">
+      </div>
+      <button class="btn-ghost" type="button" onclick="lookupOrder()">Kiểm tra đơn</button>
+      <div class="lookup-result" id="lookup-result" hidden></div>
+    </div>
     <div class="grid" id="grid">
       <article class="card">
         <div class="thumb">
@@ -638,6 +660,22 @@
         <div class="traffic-card"><b id="traffic-week">-</b><span>7 ngày</span></div>
         <div class="traffic-card"><b id="traffic-online">-</b><span>Online 5 phút</span></div>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>Đơn hàng & Sepay</h2>
+      <p class="hint">Nhập mật khẩu admin rồi bấm tải để xem đơn mới nhất, trạng thái giao hàng và log giao dịch Sepay.</p>
+      <button class="btn-save" type="button" onclick="loadAdminOrders()">Tải đơn hàng</button>
+      <div class="traffic-grid" style="margin-top:14px">
+        <div class="traffic-card"><b id="orders-pending">-</b><span>Chờ thanh toán</span></div>
+        <div class="traffic-card"><b id="orders-paid">-</b><span>Đã nhận tiền</span></div>
+        <div class="traffic-card"><b id="orders-approved">-</b><span>Đã giao</span></div>
+        <div class="traffic-card"><b id="orders-rejected">-</b><span>Từ chối</span></div>
+      </div>
+      <h3 style="margin-top:18px">Đơn hàng mới nhất</h3>
+      <div class="admin-table-wrap" id="admin-orders-table"><p class="empty">Chưa tải dữ liệu.</p></div>
+      <h3 style="margin-top:18px">Log Sepay mới nhất</h3>
+      <div class="admin-table-wrap" id="sepay-log-table"><p class="empty">Chưa tải dữ liệu.</p></div>
     </div>
 
     <div class="panel">
@@ -895,6 +933,8 @@
 
   const API_URL = "/api/state";
   const TRAFFIC_URL = "/api/traffic";
+  const ORDER_LOOKUP_URL = "/api/order-lookup";
+  const ADMIN_ORDERS_URL = "/api/admin-orders";
   let state = cloneDefaultState();
   let brandClicks = 0;
   let brandTimer = null;
@@ -964,6 +1004,94 @@
       document.getElementById("traffic-week").textContent = Number(data.week || 0).toLocaleString("vi-VN");
       document.getElementById("traffic-online").textContent = Number(data.online || 0).toLocaleString("vi-VN");
     } catch (_) {}
+  }
+
+  function formatDate(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("vi-VN");
+  }
+
+  async function lookupOrder() {
+    const resultBox = document.getElementById("lookup-result");
+    const code = document.getElementById("lookup-code").value.trim().toUpperCase();
+    const email = document.getElementById("lookup-email").value.trim().toLowerCase();
+    resultBox.hidden = false;
+    resultBox.textContent = "Đang kiểm tra...";
+    try {
+      const params = new URLSearchParams({ code, email });
+      const response = await fetch(`${ORDER_LOOKUP_URL}?${params}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không tra cứu được đơn");
+      const order = data.order;
+      resultBox.innerHTML = `
+        <strong>${esc(order.course_title)}</strong>
+        <div>Mã đơn: <code>${esc(order.purchase_code)}</code></div>
+        <div>Số tiền: ${formatPrice(order.amount)}</div>
+        <div>Trạng thái: <span class="status-pill">${esc(order.status_text)}</span></div>
+        <div>Tạo lúc: ${esc(formatDate(order.created_at))}</div>
+        ${order.reviewed_at ? `<div>Cập nhật: ${esc(formatDate(order.reviewed_at))}</div>` : ""}
+      `;
+    } catch (error) {
+      resultBox.innerHTML = `<strong>Không tìm thấy</strong>${esc(error.message || "Vui lòng kiểm tra mã đơn và email.")}`;
+    }
+  }
+
+  function statusCounts(summary) {
+    return Object.fromEntries((summary || []).map(row => [row.status, Number(row.count || 0)]));
+  }
+
+  function adminOrderRows(orders) {
+    if (!orders?.length) return `<p class="empty">Chưa có đơn hàng.</p>`;
+    return `<table class="admin-table"><thead><tr>
+      <th>Mã</th><th>Sản phẩm</th><th>Email</th><th>Số tiền</th><th>Trạng thái</th><th>Giao hàng</th><th>Tạo lúc</th>
+    </tr></thead><tbody>${orders.map(order => `<tr>
+      <td><code>${esc(order.purchase_code)}</code></td>
+      <td>${esc(order.course_title)}<br><small>${esc(order.payer_name || "")}</small></td>
+      <td>${esc(order.email)}</td>
+      <td>${formatPrice(order.amount)}</td>
+      <td><span class="status-pill">${esc(order.status)}</span></td>
+      <td>${order.delivery_type === "manual" ? "Tài khoản thủ công" : "Google Drive"}</td>
+      <td>${esc(formatDate(order.created_at))}</td>
+    </tr>`).join("")}</tbody></table>`;
+  }
+
+  function sepayLogRows(logs) {
+    if (!logs?.length) return `<p class="empty">Chưa có log Sepay.</p>`;
+    return `<table class="admin-table"><thead><tr>
+      <th>Giao dịch</th><th>Mã đơn</th><th>Reference</th><th>Số tiền</th><th>Kết quả</th><th>Nhận lúc</th>
+    </tr></thead><tbody>${logs.map(log => `<tr>
+      <td><code>${esc(log.id)}</code></td>
+      <td><code>${esc(log.purchase_code || "-")}</code></td>
+      <td>${esc(log.reference_code || "-")}</td>
+      <td>${formatPrice(log.amount)}</td>
+      <td><span class="status-pill">${esc(log.match_status || "received")}</span></td>
+      <td>${esc(formatDate(log.created_at))}</td>
+    </tr>`).join("")}</tbody></table>`;
+  }
+
+  async function loadAdminOrders() {
+    const password = document.getElementById("admin-pass").value;
+    if (!password) { toast("Nhập mật khẩu admin trước"); return; }
+    try {
+      const response = await fetch(ADMIN_ORDERS_URL, {
+        cache: "no-store",
+        headers: { "x-admin-password": password }
+      });
+      const data = await response.json();
+      if (response.status === 401) { toast("Sai mật khẩu admin"); return; }
+      if (!response.ok) throw new Error(data.error || "Không tải được đơn hàng");
+      const counts = statusCounts(data.summary);
+      document.getElementById("orders-pending").textContent = Number(counts.pending || 0).toLocaleString("vi-VN");
+      document.getElementById("orders-paid").textContent = Number(counts.paid || 0).toLocaleString("vi-VN");
+      document.getElementById("orders-approved").textContent = Number(counts.approved || 0).toLocaleString("vi-VN");
+      document.getElementById("orders-rejected").textContent = Number(counts.rejected || 0).toLocaleString("vi-VN");
+      document.getElementById("admin-orders-table").innerHTML = adminOrderRows(data.orders);
+      document.getElementById("sepay-log-table").innerHTML = sepayLogRows(data.logs);
+      toast("Đã tải đơn hàng");
+    } catch (error) {
+      toast(error.message || "Không tải được đơn hàng");
+    }
   }
 
   // Ghi du lieu len server. Tra ve true neu thanh cong.
