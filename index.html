@@ -121,6 +121,8 @@
   }
 
   .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 24px 60px; }
+  #particle-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .72; }
+  #public-view, #admin-view { position: relative; z-index: 1; }
 
   .top { margin-bottom: 38px; }
 
@@ -568,9 +570,13 @@
     .payment-box { grid-template-columns: 1fr; }
     .payment-box img { width: min(240px, 100%); margin: auto; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    #particle-bg { display: none; }
+  }
 </style>
 </head>
 <body>
+<canvas id="particle-bg" aria-hidden="true"></canvas>
 <div class="workshop-loader" id="workshop-loader" role="status" aria-live="polite" aria-label="Đang tải website">
   <div class="loader-frame">
     <div class="loader-code">NIXART // WORKSHOP SYSTEM</div>
@@ -997,6 +1003,68 @@
   let activeCatalog = "learning";
   let authUser = null;
   let ordersTimer = null;
+
+  function initParticles() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const canvas = document.getElementById("particle-bg");
+    const ctx = canvas.getContext("2d");
+    const mouse = { x: innerWidth / 2, y: innerHeight / 2, active: false };
+    let particles = [];
+    let w = 0;
+    let h = 0;
+    let dpr = 1;
+
+    function resize() {
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      w = canvas.width = Math.floor(innerWidth * dpr);
+      h = canvas.height = Math.floor(innerHeight * dpr);
+      canvas.style.width = innerWidth + "px";
+      canvas.style.height = innerHeight + "px";
+      const count = Math.min(72, Math.max(28, Math.floor(innerWidth / 24)));
+      particles = Array.from({ length: count }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - .5) * .28 * dpr,
+        vy: (Math.random() - .5) * .28 * dpr,
+        r: (Math.random() * 1.7 + .8) * dpr
+      }));
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, w, h);
+      for (const p of particles) {
+        const dx = p.x - mouse.x * dpr;
+        const dy = p.y - mouse.y * dpr;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (mouse.active && dist < 170 * dpr) {
+          const force = (1 - dist / (170 * dpr)) * .08 * dpr;
+          p.vx += (dx / dist) * force;
+          p.vy += (dy / dist) * force;
+        }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= .985;
+        p.vy *= .985;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(255,196,107,.58)";
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      requestAnimationFrame(frame);
+    }
+
+    addEventListener("resize", resize);
+    addEventListener("mousemove", event => {
+      mouse.x = event.clientX;
+      mouse.y = event.clientY;
+      mouse.active = true;
+    });
+    addEventListener("mouseleave", () => { mouse.active = false; });
+    resize();
+    frame();
+  }
 
   function cloneDefaultState() {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -1792,6 +1860,8 @@
       setTimeout(() => loader.remove(), 500);
     });
   }
+
+  initParticles();
 
   // Tai du lieu tu server roi moi hien trang. Giu loader toi thieu de tranh nhay man hinh.
   Promise.all([
