@@ -546,20 +546,10 @@
       <div class="account-actions">
         <span class="auth-email" id="auth-email" hidden></span>
         <button class="btn-ghost" id="auth-login" type="button" onclick="openAuth()">Đăng nhập</button>
-        <button class="btn-ghost" id="auth-orders" type="button" onclick="openMyOrders()" hidden>Đơn của tôi</button>
+        <button class="btn-ghost" id="auth-orders" type="button" onclick="openMyOrders()" hidden>Profile</button>
         <button class="btn-ghost" id="auth-logout" type="button" onclick="signOutUser()" hidden>Đăng xuất</button>
       </div>
     </nav>
-    <div class="lookup-box">
-      <h2>Tra cứu đơn hàng</h2>
-      <p>Nhập mã đơn NIX và email đã dùng khi thanh toán để xem trạng thái nhận tiền / giao khóa học.</p>
-      <div class="row">
-        <input id="lookup-code" placeholder="Mã đơn: NIX..." autocomplete="off">
-        <input id="lookup-email" type="email" placeholder="Email nhận khóa học">
-      </div>
-      <button class="btn-ghost" type="button" onclick="lookupOrder()">Kiểm tra đơn</button>
-      <div class="lookup-result" id="lookup-result" hidden></div>
-    </div>
     <div class="grid" id="grid">
       <article class="card">
         <div class="thumb">
@@ -869,8 +859,18 @@
 </div>
 
 <div class="modal" id="orders-modal" role="dialog" aria-modal="true" aria-labelledby="orders-title">
-  <div class="modal-box" style="max-width:560px">
-    <div class="modal-head"><h2 id="orders-title">Đơn tài khoản của tôi</h2><button class="modal-close" type="button" onclick="closeMyOrders()" aria-label="Đóng">×</button></div>
+  <div class="modal-box" style="max-width:720px">
+    <div class="modal-head"><h2 id="orders-title">Profile & đơn hàng</h2><button class="modal-close" type="button" onclick="closeMyOrders()" aria-label="Đóng">×</button></div>
+    <div class="lookup-box">
+      <h2>Tra cứu đơn hàng</h2>
+      <p>Nhập mã đơn NIX để xem trạng thái nhận tiền / giao khóa học. Email sẽ tự dùng tài khoản đang đăng nhập.</p>
+      <div class="row">
+        <input id="lookup-code" placeholder="Mã đơn: NIX..." autocomplete="off">
+        <input id="lookup-email" type="email" placeholder="Email nhận khóa học" readonly>
+      </div>
+      <button class="btn-ghost" type="button" onclick="lookupOrder()">Kiểm tra đơn</button>
+      <div class="lookup-result" id="lookup-result" hidden></div>
+    </div>
     <div class="orders-list" id="orders-list"><p class="empty">Đang tải...</p></div>
   </div>
 </div>
@@ -1240,6 +1240,7 @@
     const firstLoad = !modal.classList.contains("open");
     clearTimeout(ordersTimer);
     modal.classList.add("open");
+    document.getElementById("lookup-email").value = authUser.email || "";
     if (firstLoad) list.innerHTML = `<p class="empty">Đang tải...</p>`;
     try {
       const response = await fetch("/api/orders", { credentials: "same-origin" });
