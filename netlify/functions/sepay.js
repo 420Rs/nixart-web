@@ -72,7 +72,7 @@ async function notifyDiscord(order, purchaseCode, amount) {
       username: "Nixart Orders",
       allowed_mentions: { parse: [] },
       embeds: [{
-        title: "Đã tự động giao khóa học",
+        title: "Đã nhận thanh toán",
         color: 0x4ddb8e,
         fields: [
           { name: "Sản phẩm", value: order.course_title.slice(0, 1024) },
@@ -124,6 +124,8 @@ exports.handler = async (event) => {
       return json(200, { success: true, unmatched: true });
     }
 
+    await notifyDiscord(order, purchaseCode, amount).catch(error => console.error("sepay discord error", error));
+
     if (order.delivery_type === "manual") {
       await sql`UPDATE purchase_orders SET status = 'paid', reviewed_at = NOW() WHERE id = ${order.id}`;
       await sql`UPDATE sepay_transactions SET match_status = 'paid' WHERE id = ${transactionId}`;
@@ -138,7 +140,6 @@ exports.handler = async (event) => {
         WHERE id = ${order.id}
       `;
       await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
-      await notifyDiscord(order, purchaseCode, amount).catch(error => console.error("sepay discord error", error));
       return json(200, { success: true, status: "approved" });
     } catch (error) {
       await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
