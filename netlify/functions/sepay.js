@@ -62,6 +62,31 @@ async function grantDriveAccess(order) {
   return response.data.id || "";
 }
 
+async function notifyDiscord(order, purchaseCode, amount) {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "Nixart Orders",
+      allowed_mentions: { parse: [] },
+      embeds: [{
+        title: "Đã tự động giao khóa học",
+        color: 0x4ddb8e,
+        fields: [
+          { name: "Sản phẩm", value: order.course_title.slice(0, 1024) },
+          { name: "Số tiền", value: `${Number(amount).toLocaleString("vi-VN")} đ`, inline: true },
+          { name: "Mã đơn", value: purchaseCode, inline: true },
+          { name: "Email Google", value: order.email.slice(0, 1024) }
+        ],
+        timestamp: new Date().toISOString()
+      }]
+    })
+  });
+  if (!response.ok) throw new Error(`Discord webhook loi ${response.status}`);
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return json(405, { success: false, error: "method_not_allowed" });
   if (!validAuth(event.headers || {})) return json(401, { success: false, error: "unauthorized" });
@@ -113,6 +138,7 @@ exports.handler = async (event) => {
         WHERE id = ${order.id}
       `;
       await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
+      await notifyDiscord(order, purchaseCode, amount).catch(error => console.error("sepay discord error", error));
       return json(200, { success: true, status: "approved" });
     } catch (error) {
       await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
