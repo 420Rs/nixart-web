@@ -84,7 +84,7 @@ exports.handler = async (event) => {
       ON CONFLICT (id) DO NOTHING
       RETURNING id
     `;
-    if (!inserted.length) return json(200, { success: true, duplicate: true });
+    const duplicate = !inserted.length;
 
     const claimed = await sql`
       UPDATE purchase_orders
@@ -94,6 +94,7 @@ exports.handler = async (event) => {
     `;
     const order = claimed[0];
     if (!order) {
+      if (duplicate) return json(200, { success: true, duplicate: true });
       await sql`UPDATE sepay_transactions SET match_status = 'unmatched' WHERE id = ${transactionId}`;
       return json(200, { success: true, unmatched: true });
     }
