@@ -161,16 +161,14 @@ exports.handler = async (event) => {
     const baseUrl = String(process.env.URL || process.env.DEPLOY_PRIME_URL || `https://${event.headers.host}`).replace(/\/$/, "");
     const reviewUrl = `${baseUrl}/review?token=${encodeURIComponent(token)}`;
 
-    if (deliveryType === "manual") {
-      try {
-        await notifyDiscord({
-          courseTitle: String(course.title), amount: Number(course.price), purchaseCode,
-          email, payerName, transferReference, deliveryType
-        }, reviewUrl);
-      } catch (error) {
-        await sql`DELETE FROM purchase_orders WHERE id = ${id}`;
-        throw error;
-      }
+    try {
+      await notifyDiscord({
+        courseTitle: String(course.title), amount: Number(course.price), purchaseCode,
+        email, payerName, transferReference, deliveryType
+      }, reviewUrl);
+    } catch (error) {
+      await sql`DELETE FROM purchase_orders WHERE id = ${id}`;
+      throw error;
     }
 
     return json(201, {
