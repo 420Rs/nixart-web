@@ -87,6 +87,16 @@ async function notifyDiscord(order, purchaseCode, amount) {
   if (!response.ok) throw new Error(`Discord webhook loi ${response.status}`);
 }
 
+async function claimOrder(sql, purchaseCode, amount, reference) {
+  const rows = await sql`
+    UPDATE purchase_orders
+    SET status = 'processing', transfer_reference = ${reference}
+    WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
+    RETURNING id, course_title, drive_folder_id, email, delivery_type
+  `;
+  return rows[0];
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return json(405, { success: false, error: "method_not_allowed" });
   if (!validAuth(event.headers || {})) return json(401, { success: false, error: "unauthorized" });
@@ -111,13 +121,12 @@ exports.handler = async (event) => {
     `;
     const duplicate = !inserted.length;
 
-    const claimed = await sql`
-      UPDATE purchase_orders
-      SET status = 'processing', transfer_reference = ${String(payload.referenceCode || payload.description || "")}
-      WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-      RETURNING id, course_title, drive_folder_id, email, delivery_type
-    `;
-    const order = claimed[0];
+    const reference = String(payload.referenceCode || payload.description || "");
+    let order = await claimOrder(sql, purchaseCode, amount, reference);
+    if (!order && !duplicate) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      order = await claimOrder(sql, purchaseCode, amount, reference);
+    }
     if (!order) {
       if (duplicate) return json(200, { success: true, duplicate: true });
       await sql`UPDATE sepay_transactions SET match_status = 'unmatched' WHERE id = ${transactionId}`;
