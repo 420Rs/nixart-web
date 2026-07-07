@@ -865,7 +865,7 @@
       <div><h2 id="order-title">Thanh toán sản phẩm</h2><p id="order-course"></p></div>
       <button class="modal-close" type="button" onclick="closeOrder()" aria-label="Đóng">×</button>
     </div>
-    <div class="payment-box">
+    <div class="payment-box" id="order-payment" hidden>
       <img id="order-qr" alt="QR chuyển khoản">
       <div class="payment-details">
         <p>Ngân hàng<strong id="order-bank"></strong></p>
@@ -875,7 +875,7 @@
         <p>Nội dung chuyển khoản<code id="order-code"></code></p>
       </div>
     </div>
-    <p class="order-note">Sau khi chuyển khoản, điền đúng email Google cần cấp quyền Drive rồi gửi yêu cầu. Admin sẽ kiểm tra giao dịch thủ công.</p>
+    <p class="order-note" id="order-note">Nhập thông tin nhận hàng để tạo mã QR thanh toán.</p>
     <form id="order-form">
       <input id="order-course-id" type="hidden">
       <label for="order-email">Email nhận hàng *</label>
@@ -884,7 +884,7 @@
       <input id="order-payer" required maxlength="200" placeholder="Tên hiển thị trong giao dịch">
       <label for="order-reference">Mã giao dịch / ghi chú</label>
       <input id="order-reference" maxlength="200" placeholder="Không bắt buộc">
-      <button class="btn-primary" id="order-submit" type="submit">Tôi đã chuyển khoản — gửi yêu cầu</button>
+      <button class="btn-primary" id="order-submit" type="submit">Tạo đơn và mã QR</button>
     </form>
   </div>
 </div>
@@ -1789,6 +1789,7 @@
       return;
     }
 
+    document.getElementById("order-form").reset();
     currentPurchaseCode = makePurchaseCode();
     document.getElementById("order-course-id").value = course.id;
     document.getElementById("order-course").textContent = course.title;
@@ -1800,6 +1801,13 @@
     const emailInput = document.getElementById("order-email");
     emailInput.readOnly = isAccount;
     emailInput.value = isAccount ? authUser.email : "";
+    document.getElementById("order-payer").readOnly = false;
+    document.getElementById("order-reference").readOnly = false;
+    document.getElementById("order-payment").hidden = true;
+    document.getElementById("order-note").textContent = "Nhập thông tin nhận hàng để tạo mã QR thanh toán.";
+    const submitButton = document.getElementById("order-submit");
+    submitButton.hidden = false;
+    submitButton.textContent = "Tạo đơn và mã QR";
     const qr = document.getElementById("order-qr");
     qr.src = `https://img.vietqr.io/image/${encodeURIComponent(state.bankBin)}-${encodeURIComponent(state.bankAccount)}-compact2.png?amount=${encodeURIComponent(course.price)}&addInfo=${encodeURIComponent(currentPurchaseCode)}&accountName=${encodeURIComponent(state.bankAccountName)}`;
     qr.hidden = false;
@@ -1832,14 +1840,18 @@
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Không gửi được yêu cầu");
-      closeOrder();
-      document.getElementById("order-form").reset();
-      toast("Đã gửi yêu cầu xác nhận");
+      document.getElementById("order-email").readOnly = true;
+      document.getElementById("order-payer").readOnly = true;
+      document.getElementById("order-reference").readOnly = true;
+      document.getElementById("order-payment").hidden = false;
+      document.getElementById("order-note").textContent = "Quét QR và giữ nguyên nội dung chuyển khoản. Hệ thống sẽ tự xác nhận và giao hàng.";
+      button.hidden = true;
+      toast("Đã tạo đơn — vui lòng quét QR thanh toán");
     } catch (error) {
       toast(error.message || "Không gửi được yêu cầu");
     } finally {
       button.disabled = false;
-      button.textContent = "Tôi đã chuyển khoản — gửi yêu cầu";
+      button.textContent = "Tạo đơn và mã QR";
     }
   }
 
