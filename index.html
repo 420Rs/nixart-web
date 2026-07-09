@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&amp;family=Sora:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
 
 <style>
   :root {
@@ -573,6 +573,60 @@
   @media (prefers-reduced-motion: reduce) {
     #particle-bg { display: none; }
   }
+
+  /* Minimal monochrome surface system. */
+  :root {
+    --bg: #0a0a0b;
+    --bg-soft: #141416;
+    --panel: #19191b;
+    --panel-2: #232326;
+    --line: #303034;
+    --amber: #f5f5f6;
+    --amber-hi: #ffffff;
+    --green: #d4d4d8;
+    --red: #f87171;
+    --pending: #71717a;
+    --muted: #a1a1aa;
+    --text: #f4f4f5;
+  }
+
+  body { background: radial-gradient(70% 55% at 50% -10%, #25252a 0%, transparent 70%), var(--bg); font-family: Inter, sans-serif; animation: none; }
+  #particle-bg { opacity: .24; }
+  h1, .panel h2 { font-family: Inter, sans-serif; letter-spacing: -.045em; font-weight: 800; }
+  h1 { font-size: clamp(38px, 6vw, 60px); }
+  h1 span, .panel h2, .auth-email, .traffic-card b, .price, .modal-head h2, .order-note, .lookup-result strong, .support-bubble strong { color: var(--text); }
+  .top p, .admin-top .sub { max-width: 540px; line-height: 1.6; }
+  .workshop-loader { background: #0a0a0b; }
+  .loader-frame { border-color: var(--line); background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.45); clip-path: none; border-radius: 16px; }
+  .loader-frame::before, .loader-frame::after { border-color: var(--line); opacity: 1; }
+  .loader-code, .loader-status, .loader-foot, .badge, .meta, label, .traffic-card span, .delivery-line span, .delivery-copy, .admin-table th, .status-pill, .item .info .m, .pill, button, .download-btn, .support-float, .support-bubble a, .price, .free-label { font-family: Inter, sans-serif; }
+  .loader-title { font-family: Inter, sans-serif; font-size: 34px; letter-spacing: -.04em; font-weight: 800; }
+  .loader-title span { color: var(--text); }
+  .loader-cog { border-color: #52525b; }
+  .loader-cog::after { border-color: var(--text); }
+  .loader-machine::before, .loader-bar, .fill { background: var(--text); filter: none; }
+  .wrap { max-width: 1160px; }
+  .grid { gap: 16px; }
+  .card, .panel, .lookup-box, .modal-box { border-color: var(--line); border-radius: 14px; box-shadow: none; }
+  .card:hover { transform: translateY(-2px); border-color: #55555b; box-shadow: 0 14px 36px rgba(0,0,0,.3); }
+  .thumb::after { background: linear-gradient(to top, rgba(10,10,11,.7), transparent 55%); }
+  .badge { border-radius: 999px; letter-spacing: .04em; font-weight: 600; }
+  .badge.doing, .badge.pending, .badge.done, .badge.asset { color: var(--text); background: rgba(244,244,245,.08); border-color: var(--line); }
+  .badge.doing .dot, .badge.pending .dot, .badge.done .dot, .badge.asset .dot { background: var(--text); box-shadow: none; }
+  .meta .pct { color: var(--text); }
+  .fill.done, .fill.pending { background: #a1a1aa; }
+  .catalog-tab, .btn-ghost { border-radius: 8px; }
+  .catalog-tab.active, .btn-primary, .btn-save, .download-btn, .toast { background: var(--text); color: #09090b; border-color: var(--text); }
+  .btn-primary:hover, .btn-save:hover, .download-btn:hover { background: #d4d4d8; filter: none; }
+  input, select, textarea, .traffic-card, .order-item, .item, .delivery-box, .lookup-result, .payment-box { border-color: var(--line); border-radius: 10px; }
+  input:focus, select:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgba(244,244,245,.12); }
+  .delivery-box, .lookup-result { background: var(--bg); }
+  .delivery-line { border-color: var(--line); }
+  .delivery-copy { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+  .support-float, .support-bubble { border-color: var(--line); background: rgba(25,25,27,.96); }
+  .support-float { color: var(--text); }
+  .support-float:hover { border-color: #55555b; }
+  .support-bubble a { background: var(--text); color: #09090b; }
 </style>
 </head>
 <body>
@@ -1050,7 +1104,7 @@
         if (p.x < 0 || p.x > w) p.vx *= -1;
         if (p.y < 0 || p.y > h) p.vy *= -1;
         ctx.beginPath();
-        ctx.fillStyle = "rgba(255,196,107,.58)";
+        ctx.fillStyle = "rgba(244,244,245,.58)";
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       }
