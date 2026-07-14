@@ -1,8 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { driveEmailModal } = require("../discord-bot");
+const { driveEmailModal, isDiscordBotReady } = require("../discord-bot");
 
 test("Drive purchase modal asks for one Google email", () => {
+  assert.equal(isDiscordBotReady(), false);
   const modal = driveEmailModal({ id: "blender-drive" }).toJSON();
   assert.equal(modal.custom_id, "drive_email:blender-drive");
   assert.equal(modal.components.length, 1);

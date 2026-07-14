@@ -30,6 +30,10 @@ const {
 
 let client;
 
+function isDiscordBotReady() {
+  return client?.isReady() === true;
+}
+
 function publishedCourses() {
   return (getCatalog().courses || []).filter(isCourseContentReady);
 }
@@ -244,6 +248,8 @@ async function startDiscordBot() {
   if (!process.env.DISCORD_BOT_TOKEN) return null;
   publicBaseUrl();
   client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  client.on(Events.Error, error => console.error("Discord client error", error));
+  client.on(Events.ShardError, error => console.error("Discord shard error", error));
   client.on("interactionCreate", handleInteraction);
   client.once(Events.ClientReady, readyClient => {
     registerCommands(readyClient.user.id)
@@ -254,4 +260,4 @@ async function startDiscordBot() {
   return client;
 }
 
-module.exports = { driveEmailModal, startDiscordBot };
+module.exports = { driveEmailModal, isDiscordBotReady, startDiscordBot };

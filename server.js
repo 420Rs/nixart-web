@@ -4,6 +4,7 @@ const path = require("path");
 const { ensureAuthTables, parseCookies } = require("./netlify/functions/lib/auth");
 const { COOKIE_NAME, verifyMediaToken } = require("./netlify/functions/lib/media-token");
 const { ensureLearningTables } = require("./learning");
+const { isDiscordBotReady, startDiscordBot } = require("./discord-bot");
 
 const handlers = {
   "/api/state": "./netlify/functions/state",
@@ -125,6 +126,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/health") {
       return send(res, { statusCode: 200, headers: { "Content-Type": "text/plain; charset=utf-8" }, body: "ok" });
     }
+    if (url.pathname === "/health/discord") {
+      const ready = isDiscordBotReady();
+      return send(res, {
+        statusCode: ready ? 200 : 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+        body: ready ? "ready" : "offline"
+      });
+    }
     if (url.pathname.startsWith("/media/")) return serveMedia(req, res, url.pathname);
 
     const handlerPath = handlers[url.pathname];
@@ -153,7 +162,7 @@ if (require.main === module) {
   (async () => {
     await ensureAuthTables();
     await ensureLearningTables();
-    if (process.env.DISCORD_BOT_TOKEN) await require("./discord-bot").startDiscordBot();
+    if (process.env.DISCORD_BOT_TOKEN) await startDiscordBot();
     server.listen(Number(process.env.PORT) || 3000, "0.0.0.0", () => {
       console.log(`Nixart listening on ${process.env.PORT || 3000}`);
     });
