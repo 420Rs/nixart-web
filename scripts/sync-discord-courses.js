@@ -1,7 +1,5 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const { ChannelType, REST, Routes } = require("discord.js");
-const { DELIVERY_MODES, driveFolderId, effectiveDeliveryMode, isForumCourseSaleReady } = require("../learning");
+const { DELIVERY_MODES, driveFolderId, effectiveDeliveryMode, getCatalog, isForumCourseSaleReady } = require("../learning");
 
 const DEFAULT_CHANNEL_ID = "1526640814472691804";
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
@@ -320,7 +318,7 @@ async function main() {
   const unknown = args.filter(arg => arg !== "--publish" && arg !== "--dry-run");
   if (unknown.length || (publishMode && args.includes("--dry-run"))) throw new Error("Dùng mặc định/--dry-run hoặc --publish");
 
-  const catalog = validateCatalogForSync(JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "catalog.json"), "utf8")));
+  const catalog = validateCatalogForSync(getCatalog());
   const courses = visibleCourses(catalog);
   const channelId = process.env.DISCORD_COURSE_CHANNEL_ID || DEFAULT_CHANNEL_ID;
 

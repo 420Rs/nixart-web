@@ -22,6 +22,7 @@ $script:SyncRunning = $false
 $script:SyncProcess = $null
 $script:SyncStdoutTask = $null
 $script:SyncStderrTask = $null
+$script:AutoSyncRequested = $false
 
 function Get-CatalogSnapshot {
   param([string]$Path = $script:CatalogPath)
@@ -347,7 +348,7 @@ $heading.Location = New-Object Drawing.Point(20, 10)
 $header.Controls.Add($heading)
 
 $subheading = New-Object Windows.Forms.Label
-$subheading.Text = "Lưu cập nhật catalog trên web ngay; đồng bộ Discord là bước riêng."
+$subheading.Text = "Lưu cập nhật web và tự đồng bộ bài đăng Discord."
 $subheading.ForeColor = $muted
 $subheading.AutoSize = $true
 $subheading.Location = New-Object Drawing.Point(22, 40)
@@ -590,7 +591,7 @@ $saveButton.FlatAppearance.BorderColor = $accent
 $editor.Controls.Add($saveButton)
 
 $saveNote = New-Object Windows.Forms.Label
-$saveNote.Text = "Lưu không tự đăng Discord."
+$saveNote.Text = "Lưu xong tự đồng bộ Discord."
 $saveNote.ForeColor = $muted
 $saveNote.AutoSize = $true
 $saveNote.Location = New-Object Drawing.Point(238, 576)
@@ -781,9 +782,11 @@ $saveButton.Add_Click({
     Save-CatalogAtomically $workingDelivery $script:DeliveryPath
     Refresh-CourseList $courseId
     Load-CourseIntoEditor $courseId
-    $statusLabel.Text = "Đã cập nhật catalog trên web; chưa đăng Discord."
+    $statusLabel.Text = "Đã cập nhật web; đang đồng bộ Discord..."
     $statusLabel.ForeColor = $success
-    Write-Log "Đã lưu '$title' ($courseId) vào catalog web. Chưa đăng lên Discord."
+    Write-Log "Đã lưu '$title' ($courseId). Bắt đầu tự đồng bộ Discord."
+    $script:AutoSyncRequested = $true
+    [void]$syncButton.PerformClick()
   } catch {
     [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể lưu khóa học", "OK", "Error") | Out-Null
     Write-Log "LỖI LƯU: $($_.Exception.Message)"
@@ -821,13 +824,17 @@ $syncTimer.Add_Tick({
 
 $syncButton.Add_Click({
   if ($script:SyncRunning) { return }
-  $answer = [Windows.Forms.MessageBox]::Show(
-    "Chỉ dữ liệu đã lưu trong catalog được dùng. Đăng/cập nhật tất cả khóa forumVisible lên kênh Discord ngay bây giờ?",
-    "Xác nhận đồng bộ Discord",
-    "YesNo",
-    "Question"
-  )
-  if ($answer -ne [Windows.Forms.DialogResult]::Yes) { return }
+  $autoSync = $script:AutoSyncRequested
+  $script:AutoSyncRequested = $false
+  if (-not $autoSync) {
+    $answer = [Windows.Forms.MessageBox]::Show(
+      "Chỉ dữ liệu đã lưu trong catalog được dùng. Đăng/cập nhật tất cả khóa forumVisible lên kênh Discord ngay bây giờ?",
+      "Xác nhận đồng bộ Discord",
+      "YesNo",
+      "Question"
+    )
+    if ($answer -ne [Windows.Forms.DialogResult]::Yes) { return }
+  }
 
   try {
     $script:SyncRunning = $true
