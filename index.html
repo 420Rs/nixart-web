@@ -338,9 +338,9 @@
 
     <section class="pricing-wrap" id="goi-hoc">
       <div class="shell">
-        <div class="section-head"><p class="eyebrow">Gói theo tháng</p><h2>Học theo nhịp của bạn.</h2><p>Quyền truy cập kéo dài 30 ngày kể từ khi được kích hoạt. Có thể mua hoặc gia hạn trực tiếp trong Discord.</p></div>
+        <div class="section-head"><p class="eyebrow">Gói theo tháng</p><h2>Học theo nhịp của bạn.</h2><p>Quyền truy cập kéo dài 30 ngày kể từ khi được kích hoạt. Thanh toán sẽ mở trong Discord khi khóa học đầu tiên được phát hành.</p></div>
         <div class="pricing" id="plans" aria-live="polite"></div>
-        <p class="pricing-note">Bạn không cần gói tháng? Mua riêng từng khóa vẫn luôn có sẵn trong Discord.</p>
+        <p class="pricing-note">Mức giá được niêm yết trước; hiện chưa mở thanh toán vì chưa có khóa học được phát hành.</p>
       </div>
     </section>
 
@@ -379,7 +379,7 @@
       discordUrl: "https://discord.gg/B8ZXSNdVaR",
       plans: [
         { name: "Cơ bản", price: 200000, description: "Bắt đầu gọn nhẹ với nhóm nội dung nền tảng.", features: ["Truy cập các khóa thuộc gói Cơ bản", "Xem trực tiếp trên website", "Hỗ trợ trong cộng đồng Discord"] },
-        { name: "Toàn bộ", price: 500000, description: "Mở toàn bộ thư viện khóa học hiện có.", features: ["Truy cập tất cả khóa học", "Nội dung mới trong thời hạn gói", "Ưu tiên hỗ trợ trong Discord"], featured: true }
+        { name: "Toàn bộ", price: 500000, description: "Mở toàn bộ thư viện khóa học khi được phát hành.", features: ["Truy cập tất cả khóa học", "Nội dung mới trong thời hạn gói", "Ưu tiên hỗ trợ trong Discord"], featured: true }
       ],
       courses: []
     };
@@ -450,7 +450,7 @@
         const button = document.createElement("a");
         button.className = "button";
         configureDiscordLink(button);
-        button.textContent = "Chọn gói trong Discord";
+        button.textContent = "Theo dõi lịch mở bán";
         article.append(title, description, price, features, button);
         return article;
       }));
