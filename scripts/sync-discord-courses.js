@@ -1,9 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { ChannelType, REST, Routes } = require("discord.js");
-const { isForumCourseSaleReady } = require("../learning");
+const { isCourseContentReady, isForumCourseSaleReady } = require("../learning");
 
 const DEFAULT_CHANNEL_ID = "1526640814472691804";
+const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
+const STREAM_TAG_NAMES = Object.freeze(["STREAM", "NON-STREAM"]);
 
 function truncateText(value, limit) {
   return Array.from(String(value || "").normalize("NFC")).slice(0, limit).join("");
@@ -22,8 +24,66 @@ function stripLinks(value) {
     .trim();
 }
 
+function safeHttpsUrl(value, maxLength = 2000) {
+  const raw = String(value || "").trim();
+  if (!raw || raw.length > maxLength) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return "";
+    return url.href.length <= maxLength ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function visibleCourses(catalog) {
   return Array.isArray(catalog?.courses) ? catalog.courses.filter(course => course?.forumVisible === true) : [];
+}
+
+function validateCatalogForSync(catalog) {
+  if (!catalog || typeof catalog !== "object" || !Array.isArray(catalog.courses) || !catalog.courses.length) {
+    throw new Error("Catalog phải có ít nhất một khóa học; dừng sync để tránh lưu trữ nhầm toàn bộ bài Discord");
+  }
+  const ids = new Set();
+  for (const course of catalog.courses) {
+    if (!course || typeof course !== "object" || Array.isArray(course)) throw new Error("Course trong catalog không hợp lệ");
+    const id = String(course.id || "");
+    if (!ID_RE.test(id) || ids.has(id.toLowerCase())) throw new Error(`Mã khóa học trùng hoặc không hợp lệ: ${id || "(trống)"}`);
+    ids.add(id.toLowerCase());
+    if (typeof course.title !== "string" || !course.title.trim() || Array.from(course.title).length > 256) {
+      throw new Error(`Tên khóa học không hợp lệ: ${id}`);
+    }
+    if (/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(course.title)) throw new Error(`Tên khóa học chứa ký tự điều khiển: ${id}`);
+    if (typeof course.description !== "string" || Array.from(course.description).length > 10000) {
+      throw new Error(`Mô tả khóa học không hợp lệ: ${id}`);
+    }
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(course.description)) {
+      throw new Error(`Mô tả khóa học chứa ký tự điều khiển: ${id}`);
+    }
+    if (!Number.isSafeInteger(course.price) || course.price < 0 || course.price > 2_000_000_000) {
+      throw new Error(`Giá khóa học không hợp lệ: ${id}`);
+    }
+    if (!["basic", "full"].includes(course.planTier)) throw new Error(`Gói khóa học không hợp lệ: ${id}`);
+    for (const field of ["forumVisible", "published", "rightsVerified", "streamAvailable", "saleEnabled"]) {
+      if (typeof course[field] !== "boolean") throw new Error(`${field} phải là boolean ở khóa học: ${id}`);
+    }
+    if (!Array.isArray(course.lessons)) throw new Error(`Danh sách bài học không hợp lệ: ${id}`);
+    const lessonIds = new Set();
+    for (const lesson of course.lessons) {
+      if (!lesson || typeof lesson !== "object" || Array.isArray(lesson) || !ID_RE.test(lesson.id)
+          || lessonIds.has(lesson.id) || typeof lesson.title !== "string" || !lesson.title.trim()
+          || typeof lesson.published !== "boolean") {
+        throw new Error(`Bài học không hợp lệ hoặc trùng mã ở khóa học: ${id}`);
+      }
+      lessonIds.add(lesson.id);
+    }
+    if (course.imageUrl && !safeHttpsUrl(course.imageUrl, 2000)) throw new Error(`imageUrl phải là URL HTTPS hợp lệ ở khóa học: ${id}`);
+    if (course.previewUrl && !safeHttpsUrl(course.previewUrl, 512)) throw new Error(`previewUrl phải là URL HTTPS hợp lệ, tối đa 512 ký tự ở khóa học: ${id}`);
+  }
+  if (!catalog.courses.some(course => course.forumVisible)) {
+    throw new Error("Không có khóa học nào được đăng forum; dừng sync để tránh lưu trữ nhầm toàn bộ bài Discord");
+  }
+  return catalog;
 }
 
 function paymentButton(course) {
@@ -41,31 +101,96 @@ function paymentButton(course) {
   };
 }
 
-function buildForumPost(course) {
+function previewButton(course) {
+  if (course?.rightsVerified !== true) return null;
+  const url = safeHttpsUrl(course?.previewUrl, 512);
+  return url ? { type: 2, style: 5, label: "Xem trước", url } : null;
+}
+
+function streamTagName(course) {
+  return isCourseContentReady(course) ? "STREAM" : "NON-STREAM";
+}
+
+function publishedLessonCount(course) {
+  return Array.isArray(course?.lessons)
+    ? course.lessons.filter(lesson => lesson?.published === true).length
+    : 0;
+}
+
+function streamTagIds(channel) {
+  const tags = Array.isArray(channel?.available_tags) ? channel.available_tags : [];
+  return Object.fromEntries(STREAM_TAG_NAMES.map(name => {
+    const tag = tags.find(item => String(item?.name || "").toUpperCase() === name);
+    return [name, tag?.id || ""];
+  }));
+}
+
+async function ensureStreamTags(rest, channel) {
+  let ids = streamTagIds(channel);
+  const missing = STREAM_TAG_NAMES.filter(name => !ids[name]);
+  if (!missing.length) return ids;
+  const current = Array.isArray(channel.available_tags) ? channel.available_tags : [];
+  if (current.length + missing.length > 20) throw new Error("Forum đã đạt giới hạn 20 tag");
+  const availableTags = [
+    ...current.map(tag => ({
+      id: tag.id,
+      name: tag.name,
+      moderated: tag.moderated === true,
+      emoji_id: tag.emoji_id || null,
+      emoji_name: tag.emoji_name || null,
+    })),
+    ...missing.map(name => ({ name, moderated: false })),
+  ];
+  const updated = await rest.patch(Routes.channel(channel.id), { body: { available_tags: availableTags } });
+  ids = streamTagIds(updated);
+  if (STREAM_TAG_NAMES.some(name => !ids[name])) throw new Error("Discord không trả về đủ tag STREAM/NON-STREAM");
+  return ids;
+}
+
+function mergeAppliedStreamTag(appliedTags, tagIds, course) {
+  const managed = new Set(STREAM_TAG_NAMES.map(name => tagIds?.[name]).filter(Boolean));
+  const kept = (Array.isArray(appliedTags) ? appliedTags : []).filter(id => !managed.has(id));
+  const desired = tagIds?.[streamTagName(course)];
+  if (!desired) return kept;
+  if (kept.length >= 5) throw new Error(`Bài ${course.id} đã có đủ 5 tag; không thể thêm ${streamTagName(course)}`);
+  return [...kept, desired];
+}
+
+function buildForumPost(course, tagIds = {}) {
   const name = threadName(course);
   const description = truncateText(stripLinks(course?.description) || "Thông tin khóa học sẽ được cập nhật.", 4096);
-  const lessonCount = Array.isArray(course?.lessons) ? course.lessons.length : 0;
+  const lessonCount = publishedLessonCount(course);
   const price = Number(course?.price);
   const saleReady = isForumCourseSaleReady(course);
+  const embed = {
+    title: truncateText(name, 256),
+    description,
+    color: 0x2a2a2e,
+    fields: [
+      { name: "Trạng thái", value: saleReady ? "Đang mở bán" : "Chưa mở bán", inline: true },
+      { name: "Hình thức", value: streamTagName(course), inline: true },
+      { name: "Số bài học", value: String(lessonCount), inline: true },
+      { name: "Giá", value: saleReady && Number.isFinite(price) ? `${new Intl.NumberFormat("vi-VN").format(price)}đ` : "Đang cập nhật", inline: true },
+    ],
+    footer: { text: truncateText(`Mã khóa học: ${course.id}`, 2048) },
+  };
+  const imageUrl = safeHttpsUrl(course?.imageUrl, 2000);
+  if (course?.rightsVerified === true && imageUrl) embed.image = { url: imageUrl };
+  const components = [paymentButton(course)];
+  const preview = previewButton(course);
+  if (preview) components.push(preview);
 
-  return {
+  const post = {
     name,
     message: {
-      embeds: [{
-        title: truncateText(name, 256),
-        description,
-        color: 0x2a2a2e,
-        fields: [
-          { name: "Trạng thái", value: saleReady ? "Đang mở bán" : "Chưa mở bán", inline: true },
-          { name: "Số bài học", value: String(lessonCount), inline: true },
-          { name: "Giá", value: saleReady && Number.isFinite(price) ? `${new Intl.NumberFormat("vi-VN").format(price)}đ` : "Đang cập nhật", inline: true },
-        ],
-        footer: { text: truncateText(`Mã khóa học: ${course.id}`, 2048) },
-      }],
-      components: [{ type: 1, components: [paymentButton(course)] }],
+      embeds: [embed],
+      components: [{ type: 1, components }],
       allowed_mentions: { parse: [] },
     },
   };
+  const appliedTags = mergeAppliedStreamTag([], tagIds, course);
+  if (appliedTags.length) post.applied_tags = appliedTags;
+  return post;
 }
 
 function buildHiddenForumMessage(courseId, title) {
@@ -134,6 +259,7 @@ async function publish(courses, channelId, token) {
   if (channel.type !== ChannelType.GuildForum || !channel.guild_id) {
     throw new Error(`Channel ${channelId} không phải GuildForum`);
   }
+  const tagIds = await ensureStreamTags(rest, channel);
 
   const [active, archived] = await Promise.all([
     rest.get(Routes.guildActiveThreads(channel.guild_id)),
@@ -144,12 +270,14 @@ async function publish(courses, channelId, token) {
   const desiredIds = new Set(courses.map(course => course.id));
 
   for (const course of courses) {
-    const post = buildForumPost(course);
+    const post = buildForumPost(course, tagIds);
     const thread = existing.get(course.id);
     if (thread) {
       const channelUpdate = {};
       if (thread.name !== post.name) channelUpdate.name = post.name;
       if (thread.thread_metadata?.archived) channelUpdate.archived = false;
+      const appliedTags = mergeAppliedStreamTag(thread.applied_tags, tagIds, course);
+      if (JSON.stringify(appliedTags) !== JSON.stringify(thread.applied_tags || [])) channelUpdate.applied_tags = appliedTags;
       if (Object.keys(channelUpdate).length) {
         await rest.patch(Routes.channel(thread.id), { body: channelUpdate });
       }
@@ -182,7 +310,7 @@ async function main() {
   const unknown = args.filter(arg => arg !== "--publish" && arg !== "--dry-run");
   if (unknown.length || (publishMode && args.includes("--dry-run"))) throw new Error("Dùng mặc định/--dry-run hoặc --publish");
 
-  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "catalog.json"), "utf8"));
+  const catalog = validateCatalogForSync(JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "catalog.json"), "utf8")));
   const courses = visibleCourses(catalog);
   const channelId = process.env.DISCORD_COURSE_CHANNEL_ID || DEFAULT_CHANNEL_ID;
 
@@ -206,8 +334,15 @@ module.exports = {
   courseIdFromMessage,
   existingThreadNames,
   indexExistingThreads,
+  ensureStreamTags,
+  mergeAppliedStreamTag,
   paymentButton,
+  previewButton,
+  safeHttpsUrl,
   stripLinks,
+  streamTagIds,
+  streamTagName,
   threadName,
+  validateCatalogForSync,
   visibleCourses,
 };

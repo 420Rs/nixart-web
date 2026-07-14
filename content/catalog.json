@@ -33,6 +33,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "doing",
       "progress": 43,
       "lessons": []
@@ -47,6 +49,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -61,6 +65,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -75,6 +81,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -89,6 +97,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -103,6 +113,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "pending",
       "progress": 0,
       "lessons": []
@@ -117,6 +129,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -131,6 +145,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -145,6 +161,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -159,6 +177,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -173,6 +193,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []
@@ -187,6 +209,8 @@
       "published": false,
       "forumVisible": true,
       "rightsVerified": false,
+      "streamAvailable": false,
+      "saleEnabled": false,
       "legacyStatus": "done",
       "progress": 100,
       "lessons": []

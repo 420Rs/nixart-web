@@ -4,3 +4,5 @@ node_modules/
 .DS_Store
 media/*
 !media/.gitkeep
+content/catalog.json.manager-backup
+content/.catalog.json.*.tmp

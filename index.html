@@ -229,10 +229,15 @@
     .course-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .course-card { min-height: 250px; display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); transition: border-color .25s ease, transform .25s var(--ease); }
     .course-card:hover { border-color: #484850; transform: translateY(-3px); }
+    .course-cover { width: calc(100% + 48px); height: 158px; margin: -24px -24px 22px; border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; background: #0f0f11; object-fit: cover; }
     .course-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 42px; color: var(--dim); font: .72rem "Cascadia Mono", Consolas, monospace; text-transform: uppercase; }
+    .course-stream { padding: 4px 7px; border: 1px solid #404047; border-radius: 999px; white-space: nowrap; }
+    .course-stream[data-stream="true"] { border-color: rgba(94,201,138,.5); color: var(--ok); background: rgba(94,201,138,.06); }
     .course-card h3 { margin-bottom: 8px; font-size: 1.05rem; }
     .course-card p { margin-bottom: 22px; color: var(--muted); font-size: .78rem; }
-    .course-card a { margin-top: auto; color: var(--text); font: 600 .75rem "Cascadia Mono", Consolas, monospace; text-decoration: none; }
+    .course-actions { display: flex; gap: 16px; align-items: center; margin-top: auto; }
+    .course-card a { color: var(--text); font: 600 .75rem "Cascadia Mono", Consolas, monospace; text-decoration: none; }
+    .course-card a.secondary-link { color: var(--muted); }
     .course-empty { grid-column: 1 / -1; min-height: 310px; display: grid; place-items: center; padding: 40px 22px; border: 1px dashed #393940; border-radius: var(--radius); background: linear-gradient(rgba(245,245,246,.02) 1px, transparent 1px), linear-gradient(90deg,rgba(245,245,246,.02) 1px,transparent 1px), var(--surface); background-size: 24px 24px; text-align: center; }
     .empty-terminal { max-width: 540px; }
     .terminal-icon { width: 54px; height: 54px; display: grid; place-items: center; margin: 0 auto 19px; border: 1px solid #424249; border-radius: 13px; color: var(--muted); font: 500 .83rem "Cascadia Mono", Consolas, monospace; }
@@ -447,6 +452,15 @@
       }
     }
 
+    function safePublicUrl(value, maxLength = 2000) {
+      try {
+        const url = new URL(String(value || ""));
+        return url.protocol === "https:" && !url.username && !url.password && url.href.length <= maxLength ? url.href : "";
+      } catch (_) {
+        return "";
+      }
+    }
+
     function setDiscord(value) {
       const url = safeInvite(value);
       document.querySelectorAll("[data-discord]").forEach(link => link.href = url);
@@ -521,26 +535,53 @@
         return;
       }
 
-      root.replaceChildren(...courses.slice(0, 9).map((course, index) => {
+      root.replaceChildren(...courses.map((course, index) => {
         const card = document.createElement("article");
         card.className = "course-card";
+        const coverUrl = safePublicUrl(course.imageUrl);
+        if (coverUrl) {
+          const cover = document.createElement("img");
+          cover.className = "course-cover";
+          cover.src = coverUrl;
+          cover.alt = "";
+          cover.loading = "lazy";
+          cover.addEventListener("error", () => cover.remove(), { once: true });
+          card.append(cover);
+        }
         const meta = document.createElement("div");
         meta.className = "course-meta";
         const code = document.createElement("span");
         code.textContent = `Khóa ${String(index + 1).padStart(2, "0")}`;
+        const stream = document.createElement("span");
+        stream.className = "course-stream";
+        stream.dataset.stream = course.streamAvailable === true ? "true" : "false";
+        stream.textContent = course.streamAvailable === true ? "STREAM" : "NON-STREAM";
         const price = document.createElement("span");
         price.textContent = formatMoney(course.price);
-        meta.append(code, price);
+        meta.append(code, stream, price);
         const title = document.createElement("h3");
         title.textContent = course.name || course.title || `Khóa học ${index + 1}`;
         const copy = document.createElement("p");
         copy.textContent = course.description || "Xem nội dung và chọn quyền học trong Discord.";
+        const actions = document.createElement("div");
+        actions.className = "course-actions";
+        const previewUrl = safePublicUrl(course.previewUrl, 512);
+        if (previewUrl) {
+          const preview = document.createElement("a");
+          preview.href = previewUrl;
+          preview.target = "_blank";
+          preview.rel = "noopener noreferrer";
+          preview.textContent = "Xem trước ↗";
+          actions.append(preview);
+        }
         const link = document.createElement("a");
+        link.className = "secondary-link";
         link.href = discordUrl;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = "Xem trong Discord ↗";
-        card.append(meta, title, copy, link);
+        link.textContent = course.saleEnabled === true ? "Mua trên Discord ↗" : "Xem trong Discord ↗";
+        actions.append(link);
+        card.append(meta, title, copy, actions);
         return card;
       }));
     }
@@ -555,18 +596,24 @@
     }
 
     async function loadCatalog() {
-      applyCatalog(fallback);
-      try {
-        const response = await fetch("/api/catalog", { headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error("Catalog unavailable");
-        applyCatalog({ ...fallback, ...await response.json() });
-      } catch (_) {
-        // ponytail: static content keeps the landing page complete while the API is offline.
+      const liveHost = new Set(["nixart.io.vn", "www.nixart.io.vn"]).has(location.hostname);
+      const endpoints = liveHost ? ["https://learn.nixart.io.vn/api/catalog", "/api/catalog"] : ["/api/catalog"];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+          if (!response.ok) throw new Error("Catalog unavailable");
+          applyCatalog({ ...fallback, ...await response.json() });
+          return;
+        } catch (_) {
+          // Try the deployed snapshot if the home streaming server is temporarily offline.
+        }
       }
     }
 
     document.querySelector("#year").textContent = new Date().getFullYear();
+    applyCatalog(fallback);
     loadCatalog();
+    setInterval(loadCatalog, 30_000);
   </script>
 </body>
 </html>

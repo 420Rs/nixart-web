@@ -6,7 +6,10 @@ const path = require("node:path");
 
 process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
-const { canAccessCourse, cleanId, isCourseContentReady, isCourseSaleReady, isForumCourseSaleReady } = require("../learning");
+const {
+  canAccessCourse, cleanId, getCatalog, hasPublishedLesson, isCourseContentReady, isCourseListed,
+  isCourseSaleReady, isForumCourseSaleReady, publicCatalog
+} = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
 test("media token is scoped to one lesson and expires", () => {
@@ -30,11 +33,129 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(canAccessCourse([{ access_scope: "full", course_id: "plan:full", access_expires_at: past }], basicCourse), false);
   assert.equal(cleanId("../secret"), "");
   assert.equal(isCourseContentReady({ published: true, rightsVerified: false }), false);
-  assert.equal(isCourseContentReady({ published: true, rightsVerified: true }), true);
+  const ready = {
+    published: true, rightsVerified: true, streamAvailable: true, saleEnabled: true,
+    lessons: [{ id: "lesson-1", title: "Bài 1", published: true }]
+  };
+  assert.equal(isCourseListed({ ...ready, streamAvailable: false }), true);
+  assert.equal(isCourseContentReady({ ...ready, streamAvailable: false }), false);
+  assert.equal(isCourseContentReady({ ...ready, lessons: [] }), false);
+  assert.equal(isCourseContentReady(ready), true);
+  assert.equal(hasPublishedLesson(ready), true);
   assert.equal(isCourseSaleReady({ published: true, rightsVerified: false, price: 50000 }), false);
-  assert.equal(isCourseSaleReady({ published: true, rightsVerified: true, price: 50000 }), true);
+  assert.equal(isCourseSaleReady({ ...ready, streamAvailable: false, price: 50000 }), false);
+  assert.equal(isCourseSaleReady({ ...ready, saleEnabled: false, price: 50000 }), false);
+  assert.equal(isCourseSaleReady({ ...ready, price: 50000 }), true);
   assert.equal(isForumCourseSaleReady({ forumVisible: false, published: true, rightsVerified: true, price: 50000 }), false);
-  assert.equal(isForumCourseSaleReady({ forumVisible: true, published: true, rightsVerified: true, price: 50000 }), true);
+  assert.equal(isForumCourseSaleReady({ ...ready, forumVisible: true, price: 50000 }), true);
+});
+
+test("catalog reloads only complete JSON and public output uses an allowlist", () => {
+  const catalogPath = path.resolve(__dirname, "..", "content", "catalog.json");
+  const readFileSync = fs.readFileSync;
+  const statSync = fs.statSync;
+  let version = 1;
+  let changeDuringRead = false;
+  let source = JSON.stringify({
+    name: "NIXART test",
+    tagline: "test",
+    discordUrl: "https://user:pass@discord.gg/test",
+    plans: [{
+      id: "basic", title: "Basic", price: 200000, durationDays: 30, description: "test",
+      features: ["one"], published: true, adminNote: "hidden"
+    }],
+    courses: [{
+      id: "course-a", title: "Alpha", description: "test", price: 50000, planTier: "basic",
+      streamAvailable: true, saleEnabled: true,
+      imageUrl: "  https://cdn.example.test/image.png  ", previewUrl: "https://cdn.example.test/preview.mp4",
+      published: true, rightsVerified: true, forumVisible: true, internalPath: "hidden",
+      lessons: [{ id: "lesson-1", title: "Lesson", duration: "10:00", published: true, mediaPath: "hidden" }]
+    }]
+  });
+
+  fs.statSync = function (file, ...args) {
+    if (path.resolve(String(file)) !== catalogPath) return statSync.call(this, file, ...args);
+    return { size: Buffer.byteLength(source), mtimeMs: version };
+  };
+  fs.readFileSync = function (file, ...args) {
+    if (path.resolve(String(file)) !== catalogPath) return readFileSync.call(this, file, ...args);
+    const snapshot = Buffer.from(source);
+    if (changeDuringRead) {
+      version += 1;
+      changeDuringRead = false;
+    }
+    return snapshot;
+  };
+
+  try {
+    assert.equal(getCatalog().courses[0].title, "Alpha");
+    const exposed = publicCatalog();
+    assert.equal(exposed.discordUrl, "");
+    assert.equal(exposed.courses[0].imageUrl, "https://cdn.example.test/image.png");
+    assert.equal(exposed.courses[0].previewUrl, "https://cdn.example.test/preview.mp4");
+    assert.equal(exposed.courses[0].streamAvailable, true);
+    assert.equal(exposed.courses[0].saleEnabled, true);
+    assert.equal("internalPath" in exposed.courses[0], false);
+    assert.equal("rightsVerified" in exposed.courses[0], false);
+    assert.equal("mediaPath" in exposed.courses[0].lessons[0], false);
+    assert.equal("adminNote" in exposed.plans[0], false);
+    assert.equal("published" in exposed.plans[0], false);
+
+    source = source.replace('"streamAvailable":true', '"streamAvailable":false');
+    version += 1;
+    const nonStream = publicCatalog();
+    assert.equal(nonStream.courses.length, 1);
+    assert.equal(nonStream.courses[0].streamAvailable, false);
+    assert.equal(nonStream.courses[0].saleEnabled, false);
+    source = source.replace('"streamAvailable":false', '"streamAvailable":true');
+    version += 1;
+
+    source = source.replace('"published":true,"mediaPath":"hidden"', '"published":false,"mediaPath":"hidden"');
+    version += 1;
+    const noPublishedLesson = publicCatalog();
+    assert.equal(noPublishedLesson.courses[0].streamAvailable, false);
+    assert.equal(noPublishedLesson.courses[0].saleEnabled, false);
+    source = source.replace('"published":false,"mediaPath":"hidden"', '"published":true,"mediaPath":"hidden"');
+    version += 1;
+
+    source = source.replace('"Alpha"', '"Bravo"');
+    version += 1;
+    changeDuringRead = true;
+    assert.equal(getCatalog().courses[0].title, "Bravo");
+
+    source = "{";
+    version += 1;
+    assert.deepEqual(getCatalog().courses, []);
+    source = JSON.stringify({ plans: [], courses: "invalid" });
+    version += 1;
+    assert.deepEqual(getCatalog().courses, []);
+
+    source = JSON.stringify({
+      plans: [],
+      courses: [{
+        id: "encoded-url", title: "URL", description: "", price: 0, planTier: "full",
+        published: true, forumVisible: true, rightsVerified: true, streamAvailable: true, saleEnabled: false,
+        imageUrl: `https://example.test/${"á".repeat(900)}`, lessons: []
+      }]
+    });
+    version += 1;
+    assert.deepEqual(publicCatalog().courses, []);
+  } finally {
+    fs.readFileSync = readFileSync;
+    fs.statSync = statSync;
+    getCatalog();
+  }
+});
+
+test("catalog API allows the production landing page only", async () => {
+  const { handler } = require("../netlify/functions/catalog");
+  const allowed = await handler({ httpMethod: "GET", headers: { origin: "https://nixart.io.vn" } });
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(allowed.headers["Access-Control-Allow-Origin"], "https://nixart.io.vn");
+  assert.equal(allowed.headers.Vary, "Origin");
+
+  const denied = await handler({ httpMethod: "GET", headers: { origin: "https://evil.example" } });
+  assert.equal(denied.headers["Access-Control-Allow-Origin"], undefined);
 });
 
 test("SePay webhook fails closed without an API key", async () => {

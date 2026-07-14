@@ -46,12 +46,22 @@ Trong Discord Developer Portal:
 
 1. OAuth2 Redirect URI phải giống hệt `DISCORD_REDIRECT_URI`: `https://learn.nixart.io.vn/api/discord-auth`.
 2. Mời bot bằng scopes `bot` và `applications.commands`.
-3. Bot chỉ cần quyền gửi tin nhắn và embed; không cần Message Content Intent.
+3. Trong forum khóa học, cấp `View Channel`, `Send Messages`, `Create Public Threads`, `Send Messages in Threads` và `Embed Links`. Cấp thêm `Manage Channels` để lần đồng bộ đầu tự tạo hai tag `STREAM`/`NON-STREAM`, cùng `Manage Threads` để đổi tên, mở lại hoặc lưu trữ bài cũ. Nếu hai tag đã được tạo thủ công thì các lần sau không cần `Manage Channels`. Bot không cần Message Content Intent.
 4. Điền `DISCORD_GUILD_ID` để slash command cập nhật ngay trong server thử nghiệm; bỏ trống để đăng ký global.
 
-## 2. Khai báo khóa học
+## 2. Quản lý và đăng khóa học
 
-Sửa `content/catalog.json`. ID chỉ dùng chữ thường, số, `_` hoặc `-`. Bật `published: true` sau khi đã có video.
+Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa khóa học, dán URL ảnh bìa và link xem trước, chọn trạng thái phát video, lưu catalog rồi đồng bộ bài đăng vào forum Discord. Hai URL phải dùng HTTPS.
+
+- `Gói Basic`: cả gói 200k và 500k đều xem được.
+- `Gói Full`: chỉ gói 500k hoặc người mua lẻ xem được.
+- Chỉ xác nhận quyền phân phối khi bạn thực sự có quyền với nội dung.
+- `STREAM` là khóa đã học trực tiếp được trên web; `NON-STREAM` là khóa chưa có video phát trên web. Các khóa cũ mặc định là `NON-STREAM`.
+- `Công khai trên web` và `Mở thanh toán` là hai trạng thái riêng; khóa `NON-STREAM` có thể được niêm yết nhưng chưa thể thu tiền.
+- Nút thanh toán chỉ mở khi khóa được đăng forum, đã phát hành, đã xác nhận quyền, ở trạng thái `STREAM`, có giá lớn hơn 0 và có ít nhất một bài HLS đã phát hành.
+- Nếu Discord tạm lỗi, khóa học vẫn được lưu; bấm đồng bộ lại sau sẽ cập nhật đúng bài cũ, không tạo bài trùng.
+
+Bot và API tự nạp lại catalog sau khi app lưu, không cần khởi động lại Node. Landing `nixart.io.vn` đọc catalog công khai từ `learn.nixart.io.vn` và dùng bản deploy gần nhất làm dự phòng khi máy stream tạm offline. Có thể sửa thủ công `content/catalog.json` khi cần; ID chỉ dùng chữ thường, số, `_` hoặc `-`.
 
 ```json
 {
@@ -60,18 +70,20 @@ Sửa `content/catalog.json`. ID chỉ dùng chữ thường, số, `_` hoặc `
   "description": "Khóa học từ nhập môn.",
   "price": 350000,
   "planTier": "basic",
+  "imageUrl": "https://cdn.example.com/blender.jpg",
+  "previewUrl": "https://video.example.com/blender-preview",
+  "forumVisible": true,
   "published": true,
+  "rightsVerified": true,
+  "streamAvailable": false,
+  "saleEnabled": false,
   "lessons": [
     { "id": "giao-dien", "title": "Làm quen giao diện", "published": true }
   ]
 }
 ```
 
-- `planTier: "basic"`: cả gói 200k và 500k đều xem được.
-- `planTier: "full"`: chỉ gói 500k hoặc người mua lẻ xem được.
-- Mua lẻ không hết hạn; gói tháng cộng dồn 30 ngày khi gia hạn cùng loại.
-
-Khởi động lại Node sau khi sửa catalog.
+Mua lẻ không hết hạn; gói tháng cộng dồn 30 ngày khi gia hạn cùng loại.
 
 ## 3. Đóng gói video HLS
 

@@ -1,10 +1,64 @@
 const crypto = require("crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { neon } = require("@neondatabase/serverless");
-const rawCatalog = require("./content/catalog.json");
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
+const CATALOG_PATH = path.join(__dirname, "content", "catalog.json");
+const EMPTY_CATALOG = Object.freeze({ name: "NIXART", tagline: "", discordUrl: "", plans: [], courses: [] });
 let sqlClient;
 let tablesReady;
+
+function validCatalog(catalog) {
+  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)
+      || !Array.isArray(catalog.plans) || !Array.isArray(catalog.courses)
+      || !catalog.plans.every(item => item && typeof item === "object" && !Array.isArray(item)
+        && ID_RE.test(item.id) && typeof item.title === "string" && typeof item.description === "string"
+        && Number.isSafeInteger(item.price) && item.price >= 0 && item.price <= 2_000_000_000
+        && Number.isSafeInteger(item.durationDays) && item.durationDays >= 1 && item.durationDays <= 366
+        && typeof item.published === "boolean" && Array.isArray(item.features)
+        && item.features.every(feature => typeof feature === "string"))) return false;
+  if (new Set(catalog.plans.map(item => item.id)).size !== catalog.plans.length) return false;
+  const ids = new Set();
+  return catalog.courses.every(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item) || !ID_RE.test(item.id) || ids.has(item.id)) return false;
+    ids.add(item.id);
+    const lessonIds = new Set();
+    return typeof item.title === "string" && Boolean(item.title.trim()) && Array.from(item.title).length <= 256
+      && !/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(item.title)
+      && typeof item.description === "string" && Array.from(item.description).length <= 10000
+      && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(item.description)
+      && Number.isSafeInteger(item.price) && item.price >= 0 && item.price <= 2_000_000_000
+      && ["basic", "full"].includes(item.planTier)
+      && ["published", "forumVisible", "rightsVerified", "streamAvailable", "saleEnabled"].every(field => typeof item[field] === "boolean")
+      && (!item.imageUrl || Boolean(publicUrl(item.imageUrl, 2000)))
+      && (!item.previewUrl || Boolean(publicUrl(item.previewUrl, 512)))
+      && Array.isArray(item.lessons)
+      && item.lessons.every(lesson => {
+        if (!lesson || typeof lesson !== "object" || Array.isArray(lesson)
+            || !ID_RE.test(lesson.id) || lessonIds.has(lesson.id)) return false;
+        lessonIds.add(lesson.id);
+        return typeof lesson.title === "string" && Boolean(lesson.title.trim()) && typeof lesson.published === "boolean"
+          && (lesson.duration === undefined || typeof lesson.duration === "string");
+      });
+  });
+}
+
+function loadCatalog() {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const before = fs.statSync(CATALOG_PATH);
+      const source = fs.readFileSync(CATALOG_PATH);
+      const after = fs.statSync(CATALOG_PATH);
+      if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || source.length !== after.size) continue;
+      const next = JSON.parse(source.toString("utf8"));
+      return validCatalog(next) ? next : EMPTY_CATALOG;
+    } catch {
+      // Retry one transient replace/read race, then fail closed for purchases and playback.
+    }
+  }
+  return EMPTY_CATALOG;
+}
 
 function db() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -17,12 +71,21 @@ function cleanId(value) {
   return ID_RE.test(id) ? id : "";
 }
 
-function isCourseContentReady(course) {
+function isCourseListed(course) {
   return Boolean(course?.published === true && course?.rightsVerified === true);
 }
 
+function hasPublishedLesson(course) {
+  return Array.isArray(course?.lessons) && course.lessons.some(lesson =>
+    lesson?.published === true && ID_RE.test(lesson.id) && typeof lesson.title === "string" && Boolean(lesson.title.trim()));
+}
+
+function isCourseContentReady(course) {
+  return isCourseListed(course) && course?.streamAvailable === true && hasPublishedLesson(course);
+}
+
 function isCourseSaleReady(course) {
-  return isCourseContentReady(course) && Number(course.price) > 0;
+  return isCourseContentReady(course) && course?.saleEnabled === true && Number(course.price) > 0;
 }
 
 function isForumCourseSaleReady(course) {
@@ -30,27 +93,59 @@ function isForumCourseSaleReady(course) {
 }
 
 function getCatalog() {
-  return rawCatalog;
+  return loadCatalog();
+}
+
+function publicUrl(value, maxLength = 2000) {
+  if (typeof value !== "string") return "";
+  const candidate = value.trim();
+  if (!candidate || candidate.length > maxLength) return "";
+  try {
+    const url = new URL(candidate);
+    const href = url.href;
+    return url.protocol === "https:" && !url.username && !url.password && href.length <= maxLength ? href : "";
+  } catch {
+    return "";
+  }
 }
 
 function publicCatalog() {
+  const catalog = getCatalog();
   return {
-    name: String(rawCatalog.name || "NIXART"),
-    tagline: String(rawCatalog.tagline || ""),
-    discordUrl: String(process.env.DISCORD_INVITE_URL || rawCatalog.discordUrl || ""),
-    plans: (rawCatalog.plans || []).filter(item => item.published).map(({ published, ...item }) => item),
-    courses: (rawCatalog.courses || []).filter(isCourseContentReady).map(({
-      published, lessons, forumVisible, rightsVerified, legacyPrice, legacyStatus, progress, ...course
-    }) => ({
-      ...course,
-      lessons: (lessons || []).filter(item => item.published).map(({ published: lessonPublished, ...lesson }) => lesson)
+    name: String(catalog.name || "NIXART"),
+    tagline: String(catalog.tagline || ""),
+    discordUrl: publicUrl(process.env.DISCORD_INVITE_URL || catalog.discordUrl),
+    plans: catalog.plans.filter(item => item.published).map(item => ({
+      id: String(item.id || ""),
+      title: String(item.title || ""),
+      price: Number(item.price) || 0,
+      durationDays: Number(item.durationDays) || 0,
+      description: String(item.description || ""),
+      features: Array.isArray(item.features) ? item.features.map(feature => String(feature)) : []
+    })),
+    courses: catalog.courses.filter(isCourseListed).map(course => ({
+      id: String(course.id || ""),
+      title: String(course.title || ""),
+      description: String(course.description || ""),
+      price: Number(course.price) || 0,
+      planTier: String(course.planTier || ""),
+      // Expose STREAM only when the course can actually serve a published lesson.
+      streamAvailable: isCourseContentReady(course),
+      saleEnabled: isCourseSaleReady(course),
+      imageUrl: publicUrl(course.imageUrl, 2000),
+      previewUrl: publicUrl(course.previewUrl, 512),
+      lessons: (course.lessons || []).filter(item => item.published).map(lesson => ({
+        id: String(lesson.id || ""),
+        title: String(lesson.title || ""),
+        duration: String(lesson.duration || "")
+      }))
     }))
   };
 }
 
 function findCourse(courseId) {
   const id = cleanId(courseId);
-  return (rawCatalog.courses || []).find(course => isCourseContentReady(course) && course.id === id) || null;
+  return getCatalog().courses.find(course => isCourseContentReady(course) && course.id === id) || null;
 }
 
 function findLesson(course, lessonId) {
@@ -60,7 +155,7 @@ function findLesson(course, lessonId) {
 
 function findPlan(planId) {
   const id = cleanId(planId);
-  return (rawCatalog.plans || []).find(plan => plan.published && plan.id === id) || null;
+  return getCatalog().plans.find(plan => plan.published && plan.id === id) || null;
 }
 
 async function ensureLearningTables() {
@@ -400,8 +495,10 @@ module.exports = {
   findPlan,
   getCatalog,
   getEntitlements,
+  hasPublishedLesson,
   hasCourseAccess,
   isCourseContentReady,
+  isCourseListed,
   isCourseSaleReady,
   isForumCourseSaleReady,
   publicCatalog
