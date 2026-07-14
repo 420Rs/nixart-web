@@ -15,13 +15,16 @@ const {
   findCourse,
   findLesson,
   getCatalog,
-  hasCourseAccess
+  hasCourseAccess,
+  isCourseContentReady,
+  isCourseSaleReady,
+  isForumCourseSaleReady
 } = require("./learning");
 
 let client;
 
 function publishedCourses() {
-  return (getCatalog().courses || []).filter(course => course.published);
+  return (getCatalog().courses || []).filter(isCourseContentReady);
 }
 
 function option(label, value, description) {
@@ -87,7 +90,7 @@ async function showProducts(interaction) {
   const catalog = getCatalog();
   const plans = (catalog.plans || []).filter(plan => plan.published)
     .map(plan => option(`${plan.title} — ${Number(plan.price).toLocaleString("vi-VN")}đ`, `plan:${plan.id}`, `${plan.durationDays || 30} ngày`));
-  const courses = publishedCourses().filter(course => Number(course.price) > 0)
+  const courses = publishedCourses().filter(isCourseSaleReady)
     .map(course => option(`${course.title} — ${Number(course.price).toLocaleString("vi-VN")}đ`, `course:${course.id}`, "Sở hữu khóa học"));
   const products = [...plans, ...courses];
   if (!products.length) return interaction.reply({ content: "Chưa có sản phẩm nào đang bán.", flags: MessageFlags.Ephemeral });
@@ -123,10 +126,9 @@ async function chooseLesson(interaction) {
   });
 }
 
-async function buyProduct(interaction) {
-  const [kind, id] = String(interaction.values[0] || "").split(":");
-  const scope = kind === "plan" ? id : "course";
-  await interaction.deferUpdate();
+async function createPaymentReply(interaction, scope, id, update) {
+  if (update) await interaction.deferUpdate();
+  else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const order = await createPurchase({
     discordId: interaction.user.id,
     displayName: interaction.user.globalName || interaction.user.username,
@@ -148,6 +150,20 @@ async function buyProduct(interaction) {
   return interaction.editReply({ content: "", embeds: [embed], components: [] });
 }
 
+async function buyProduct(interaction) {
+  const [kind, id] = String(interaction.values[0] || "").split(":");
+  return createPaymentReply(interaction, kind === "plan" ? id : "course", id, true);
+}
+
+async function buyCourseButton(interaction) {
+  const id = interaction.customId.slice("buy_course:".length);
+  const course = findCourse(id);
+  if (!isForumCourseSaleReady(course)) {
+    return interaction.reply({ content: "Khóa học này chưa mở thanh toán.", flags: MessageFlags.Ephemeral });
+  }
+  return createPaymentReply(interaction, "course", id, false);
+}
+
 async function handleInteraction(interaction) {
   try {
     if (interaction.isChatInputCommand()) {
@@ -159,6 +175,7 @@ async function handleInteraction(interaction) {
       if (interaction.customId.startsWith("learn_lesson:")) return chooseLesson(interaction);
       if (interaction.customId === "buy_product") return buyProduct(interaction);
     }
+    if (interaction.isButton() && interaction.customId.startsWith("buy_course:")) return buyCourseButton(interaction);
   } catch (error) {
     console.error("Discord interaction error", error);
     const message = { content: "Không xử lý được yêu cầu lúc này. Vui lòng thử lại.", components: [] };

@@ -6,7 +6,7 @@ const path = require("node:path");
 
 process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
-const { canAccessCourse, cleanId } = require("../learning");
+const { canAccessCourse, cleanId, isCourseContentReady, isCourseSaleReady, isForumCourseSaleReady } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
 test("media token is scoped to one lesson and expires", () => {
@@ -29,6 +29,12 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(canAccessCourse([{ access_scope: "full", course_id: "plan:full", access_expires_at: future }], fullCourse), true);
   assert.equal(canAccessCourse([{ access_scope: "full", course_id: "plan:full", access_expires_at: past }], basicCourse), false);
   assert.equal(cleanId("../secret"), "");
+  assert.equal(isCourseContentReady({ published: true, rightsVerified: false }), false);
+  assert.equal(isCourseContentReady({ published: true, rightsVerified: true }), true);
+  assert.equal(isCourseSaleReady({ published: true, rightsVerified: false, price: 50000 }), false);
+  assert.equal(isCourseSaleReady({ published: true, rightsVerified: true, price: 50000 }), true);
+  assert.equal(isForumCourseSaleReady({ forumVisible: false, published: true, rightsVerified: true, price: 50000 }), false);
+  assert.equal(isForumCourseSaleReady({ forumVisible: true, published: true, rightsVerified: true, price: 50000 }), true);
 });
 
 test("SePay webhook fails closed without an API key", async () => {

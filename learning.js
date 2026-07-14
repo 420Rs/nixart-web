@@ -17,6 +17,18 @@ function cleanId(value) {
   return ID_RE.test(id) ? id : "";
 }
 
+function isCourseContentReady(course) {
+  return Boolean(course?.published === true && course?.rightsVerified === true);
+}
+
+function isCourseSaleReady(course) {
+  return isCourseContentReady(course) && Number(course.price) > 0;
+}
+
+function isForumCourseSaleReady(course) {
+  return course?.forumVisible === true && isCourseSaleReady(course);
+}
+
 function getCatalog() {
   return rawCatalog;
 }
@@ -27,7 +39,9 @@ function publicCatalog() {
     tagline: String(rawCatalog.tagline || ""),
     discordUrl: String(process.env.DISCORD_INVITE_URL || rawCatalog.discordUrl || ""),
     plans: (rawCatalog.plans || []).filter(item => item.published).map(({ published, ...item }) => item),
-    courses: (rawCatalog.courses || []).filter(item => item.published).map(({ published, lessons, ...course }) => ({
+    courses: (rawCatalog.courses || []).filter(isCourseContentReady).map(({
+      published, lessons, forumVisible, rightsVerified, legacyPrice, legacyStatus, progress, ...course
+    }) => ({
       ...course,
       lessons: (lessons || []).filter(item => item.published).map(({ published: lessonPublished, ...lesson }) => lesson)
     }))
@@ -36,7 +50,7 @@ function publicCatalog() {
 
 function findCourse(courseId) {
   const id = cleanId(courseId);
-  return (rawCatalog.courses || []).find(course => course.published && course.id === id) || null;
+  return (rawCatalog.courses || []).find(course => isCourseContentReady(course) && course.id === id) || null;
 }
 
 function findLesson(course, lessonId) {
@@ -193,7 +207,7 @@ async function hasCourseAccess(discordId, course) {
 function productFor(scope, value) {
   if (scope === "course") {
     const course = findCourse(value);
-    if (!course || !Number(course.price)) return null;
+    if (!isCourseSaleReady(course)) return null;
     return { id: course.id, title: course.title, amount: Number(course.price), scope: "course", days: null };
   }
   const plan = findPlan(scope);
@@ -387,5 +401,8 @@ module.exports = {
   getCatalog,
   getEntitlements,
   hasCourseAccess,
+  isCourseContentReady,
+  isCourseSaleReady,
+  isForumCourseSaleReady,
   publicCatalog
 };

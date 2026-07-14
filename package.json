@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
+    "sync:discord-courses": "node --env-file-if-exists=.env scripts/sync-discord-courses.js",
     "test": "node --test"
   },
   "dependencies": {
