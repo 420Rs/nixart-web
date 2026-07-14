@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory = $true)][string]$InputFile,
   [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9][a-z0-9_-]{0,79}$')][string]$CourseId,
   [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9][a-z0-9_-]{0,79}$')][string]$LessonId,
-  [ValidateRange(360, 2160)][int]$Height = 720,
+  [ValidateRange(360, 2160)][int]$Height = 1080,
   [ValidateRange(2, 10)][int]$SegmentSeconds = 6,
   [ValidateRange(16, 30)][int]$Crf = 22
 )
