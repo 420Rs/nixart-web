@@ -292,9 +292,13 @@ async function ensureLearningTables() {
       WHERE id IN (SELECT id FROM duplicates WHERE position > 1)
     `;
     await sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_pending_drive_idx
+      DROP INDEX IF EXISTS purchase_orders_one_pending_drive_idx
+    `;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_active_drive_idx
       ON purchase_orders (discord_id, course_id)
-      WHERE delivery_type = 'drive' AND status = 'pending' AND discord_id IS NOT NULL
+      WHERE delivery_type = 'drive' AND order_origin = 'discord' AND discord_id IS NOT NULL
+        AND status IN ('pending', 'processing', 'paid', 'approved')
     `;
     await sql`
       CREATE TABLE IF NOT EXISTS learning_entitlements (
@@ -522,15 +526,19 @@ async function createPurchase({ discordId, displayName, scope, value, email = ""
         ${String(discordId)}, ${product.scope}, ${product.days}, 'discord'
       )
       ON CONFLICT DO NOTHING
-      RETURNING id, purchase_code, course_title, amount, email, created_at
+      RETURNING id, purchase_code, course_title, amount, email, status, created_at
     `;
     existing = inserted.length ? [] : await sql`
-      SELECT id, purchase_code, course_title, amount, email, created_at
+      SELECT id, purchase_code, course_title, amount, email, status, created_at
       FROM purchase_orders
       WHERE discord_id = ${String(discordId)} AND course_id = ${product.id}
-        AND delivery_type = ${product.deliveryType} AND status = 'pending'
+        AND delivery_type = ${product.deliveryType}
+        AND status IN ('pending', 'processing', 'paid', 'approved')
       ORDER BY created_at DESC LIMIT 1
     `;
+    if (!inserted.length && existing[0]?.status !== "pending") {
+      throw new Error("Khóa học này đã mua hoặc đang được xử lý");
+    }
     if (!inserted.length && existing.length) {
       reused = true;
       purchaseCode = existing[0].purchase_code;
