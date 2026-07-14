@@ -5,16 +5,23 @@ const {
   Events,
   GatewayIntentBits,
   MessageFlags,
+  ModalBuilder,
   REST,
   Routes,
   SlashCommandBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require("discord.js");
 const {
+  effectiveDeliveryMode,
+  escapeDiscordMarkdown,
   createPurchase,
   findCourse,
   findLesson,
+  findSaleCourse,
   getCatalog,
+  googleEmail,
   hasCourseAccess,
   isCourseContentReady,
   isCourseSaleReady,
@@ -89,9 +96,17 @@ async function showCourses(interaction) {
 async function showProducts(interaction) {
   const catalog = getCatalog();
   const plans = (catalog.plans || []).filter(plan => plan.published)
-    .map(plan => option(`${plan.title} — ${Number(plan.price).toLocaleString("vi-VN")}đ`, `plan:${plan.id}`, `${plan.durationDays || 30} ngày`));
-  const courses = publishedCourses().filter(isCourseSaleReady)
-    .map(course => option(`${course.title} — ${Number(course.price).toLocaleString("vi-VN")}đ`, `course:${course.id}`, "Sở hữu khóa học"));
+    .map(plan => option(
+      `${plan.title} — ${Number(plan.price).toLocaleString("vi-VN")}đ`,
+      `plan:${plan.id}`,
+      `${plan.durationDays || 30} ngày · chỉ thư viện STREAM`
+    ));
+  const courses = (catalog.courses || []).filter(isCourseSaleReady)
+    .map(course => option(
+      `${course.title} — ${Number(course.price).toLocaleString("vi-VN")}đ`,
+      `course:${course.id}`,
+      effectiveDeliveryMode(course) === "DRIVE" ? "Nhận qua Google Drive" : "Học trực tiếp trên web"
+    ));
   const products = [...plans, ...courses];
   if (!products.length) return interaction.reply({ content: "Chưa có sản phẩm nào đang bán.", flags: MessageFlags.Ephemeral });
   return interaction.reply({
@@ -126,42 +141,81 @@ async function chooseLesson(interaction) {
   });
 }
 
-async function createPaymentReply(interaction, scope, id, update) {
+function driveEmailModal(course) {
+  return new ModalBuilder()
+    .setCustomId(`drive_email:${course.id}`)
+    .setTitle("Email nhận khóa học Google Drive")
+    .addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("google_email")
+        .setLabel("Email đăng nhập Google Drive")
+        .setPlaceholder("ban@example.com")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(254)
+    ));
+}
+
+async function createPaymentReply(interaction, scope, id, update, email = "") {
   if (update) await interaction.deferUpdate();
   else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const order = await createPurchase({
     discordId: interaction.user.id,
     displayName: interaction.user.globalName || interaction.user.username,
     scope,
-    value: id
+    value: id,
+    email
   });
   const bankReady = order.bank.bin && order.bank.account;
+  const fields = [
+    { name: "Số tiền", value: `${Number(order.amount).toLocaleString("vi-VN")}đ`, inline: true },
+    { name: "Nội dung chuyển khoản", value: `\`${order.purchaseCode}\``, inline: true },
+    { name: "Tài khoản", value: bankReady ? `${order.bank.account} · ${order.bank.accountName || order.bank.bin}` : "Admin chưa cấu hình tài khoản ngân hàng" }
+  ];
+  if (order.deliveryType === "drive") fields.push({ name: "Email Google", value: escapeDiscordMarkdown(order.email) });
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(order.reused ? "Đơn thanh toán đang chờ" : "Đã tạo đơn thanh toán")
-    .setDescription(`**${order.product}**`)
-    .addFields(
-      { name: "Số tiền", value: `${Number(order.amount).toLocaleString("vi-VN")}đ`, inline: true },
-      { name: "Nội dung chuyển khoản", value: `\`${order.purchaseCode}\``, inline: true },
-      { name: "Tài khoản", value: bankReady ? `${order.bank.account} · ${order.bank.accountName || order.bank.bin}` : "Admin chưa cấu hình tài khoản ngân hàng" }
-    )
-    .setFooter({ text: "Chuyển đúng số tiền và nội dung. Bot sẽ mở quyền khi SePay xác nhận." });
+    .setDescription(`**${escapeDiscordMarkdown(order.product)}**`)
+    .addFields(...fields)
+    .setFooter({
+      text: order.deliveryType === "drive"
+        ? "Chuyển đúng nội dung. SePay xác nhận xong, email trên sẽ được thêm vào thư mục Drive."
+        : order.scope !== "course"
+          ? "Gói tháng áp dụng cho STREAM; khóa DRIVE bán lẻ. Bot mở quyền khi SePay xác nhận."
+          : "Chuyển đúng số tiền và nội dung. Bot sẽ mở quyền khi SePay xác nhận."
+    });
   if (order.qrUrl) embed.setImage(order.qrUrl);
   return interaction.editReply({ content: "", embeds: [embed], components: [] });
 }
 
 async function buyProduct(interaction) {
   const [kind, id] = String(interaction.values[0] || "").split(":");
-  return createPaymentReply(interaction, kind === "plan" ? id : "course", id, true);
+  if (kind === "plan") return createPaymentReply(interaction, id, id, true);
+  const course = findSaleCourse(id);
+  if (!course) return interaction.update({ content: "Khóa học này chưa mở thanh toán.", components: [] });
+  if (effectiveDeliveryMode(course) === "DRIVE") return interaction.showModal(driveEmailModal(course));
+  return createPaymentReply(interaction, "course", id, true);
 }
 
 async function buyCourseButton(interaction) {
   const id = interaction.customId.slice("buy_course:".length);
-  const course = findCourse(id);
+  const course = findSaleCourse(id);
   if (!isForumCourseSaleReady(course)) {
     return interaction.reply({ content: "Khóa học này chưa mở thanh toán.", flags: MessageFlags.Ephemeral });
   }
+  if (effectiveDeliveryMode(course) === "DRIVE") return interaction.showModal(driveEmailModal(course));
   return createPaymentReply(interaction, "course", id, false);
+}
+
+async function driveEmailSubmit(interaction) {
+  const id = interaction.customId.slice("drive_email:".length);
+  const course = findSaleCourse(id);
+  const email = googleEmail(interaction.fields.getTextInputValue("google_email"));
+  if (!course || effectiveDeliveryMode(course) !== "DRIVE" || !email) {
+    return interaction.reply({ content: "Khóa học hoặc email Google không hợp lệ.", flags: MessageFlags.Ephemeral });
+  }
+  return createPaymentReply(interaction, "course", id, false, email);
 }
 
 async function handleInteraction(interaction) {
@@ -175,6 +229,7 @@ async function handleInteraction(interaction) {
       if (interaction.customId.startsWith("learn_lesson:")) return chooseLesson(interaction);
       if (interaction.customId === "buy_product") return buyProduct(interaction);
     }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("drive_email:")) return driveEmailSubmit(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("buy_course:")) return buyCourseButton(interaction);
   } catch (error) {
     console.error("Discord interaction error", error);
@@ -199,4 +254,4 @@ async function startDiscordBot() {
   return client;
 }
 
-module.exports = { startDiscordBot };
+module.exports = { driveEmailModal, startDiscordBot };

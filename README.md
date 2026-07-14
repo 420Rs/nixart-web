@@ -46,22 +46,35 @@ Trong Discord Developer Portal:
 
 1. OAuth2 Redirect URI phải giống hệt `DISCORD_REDIRECT_URI`: `https://learn.nixart.io.vn/api/discord-auth`.
 2. Mời bot bằng scopes `bot` và `applications.commands`.
-3. Trong forum khóa học, cấp `View Channel`, `Send Messages`, `Create Public Threads`, `Send Messages in Threads` và `Embed Links`. Cấp thêm `Manage Channels` để lần đồng bộ đầu tự tạo hai tag `STREAM`/`NON-STREAM`, cùng `Manage Threads` để đổi tên, mở lại hoặc lưu trữ bài cũ. Nếu hai tag đã được tạo thủ công thì các lần sau không cần `Manage Channels`. Bot không cần Message Content Intent.
+3. Trong forum khóa học, cấp `View Channel`, `Send Messages`, `Create Public Threads`, `Send Messages in Threads` và `Embed Links`. Cấp thêm `Manage Channels` để lần đồng bộ đầu tự tạo ba tag `DRIVE`/`STREAM`/`NON-STREAM`, cùng `Manage Threads` để đổi tên, mở lại hoặc lưu trữ bài cũ. Nếu ba tag đã được tạo thủ công thì các lần sau không cần `Manage Channels`. Bot không cần Message Content Intent.
 4. Điền `DISCORD_GUILD_ID` để slash command cập nhật ngay trong server thử nghiệm; bỏ trống để đăng ký global.
 
 ## 2. Quản lý và đăng khóa học
 
-Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa khóa học, dán URL ảnh bìa và link xem trước, chọn trạng thái phát video, lưu catalog rồi đồng bộ bài đăng vào forum Discord. Hai URL phải dùng HTTPS.
+Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa khóa học, dán URL ảnh bìa và link xem trước, chọn cách giao nội dung, lưu catalog rồi đồng bộ bài đăng vào forum Discord. Các URL phải dùng HTTPS.
 
-- `Gói Basic`: cả gói 200k và 500k đều xem được.
-- `Gói Full`: chỉ gói 500k hoặc người mua lẻ xem được.
+- `Gói Basic`: cả gói 200k và 500k đều xem được các khóa STREAM Basic.
+- `Gói Full`: gói 500k xem được toàn bộ khóa STREAM; DRIVE chỉ bán lẻ vì chưa có cơ chế thu hồi quyền thư mục khi gói tháng hết hạn.
 - Chỉ xác nhận quyền phân phối khi bạn thực sự có quyền với nội dung.
-- `STREAM` là khóa đã học trực tiếp được trên web; `NON-STREAM` là khóa chưa có video phát trên web. Các khóa cũ mặc định là `NON-STREAM`.
+- `DRIVE`: bot hỏi email Google, SePay xác nhận tiền rồi thêm email đó vào thư mục với quyền xem.
+- `STREAM`: học trực tiếp trên web bằng HLS đã bảo vệ.
+- `NON-STREAM`: khóa cũ hoặc khóa chưa có cách giao nội dung; được niêm yết nhưng không thể mở thanh toán.
 - `Công khai trên web` và `Mở thanh toán` là hai trạng thái riêng; khóa `NON-STREAM` có thể được niêm yết nhưng chưa thể thu tiền.
-- Nút thanh toán chỉ mở khi khóa được đăng forum, đã phát hành, đã xác nhận quyền, ở trạng thái `STREAM`, có giá lớn hơn 0 và có ít nhất một bài HLS đã phát hành.
+- Nút thanh toán chỉ mở khi khóa được đăng forum, đã phát hành, đã xác nhận quyền, có giá lớn hơn 0; DRIVE cần folder ID hợp lệ, STREAM cần ít nhất một bài HLS đã phát hành.
+- Với DRIVE, điền `GOOGLE_SERVICE_ACCOUNT_JSON` và chia sẻ thư mục cho email service account với quyền Editor/được phép chia sẻ trước khi mở bán.
 - Nếu Discord tạm lỗi, khóa học vẫn được lưu; bấm đồng bộ lại sau sẽ cập nhật đúng bài cũ, không tạo bài trùng.
 
 Bot và API tự nạp lại catalog sau khi app lưu, không cần khởi động lại Node. Landing `nixart.io.vn` đọc catalog công khai từ `learn.nixart.io.vn` và dùng bản deploy gần nhất làm dự phòng khi máy stream tạm offline. Có thể sửa thủ công `content/catalog.json` khi cần; ID chỉ dùng chữ thường, số, `_` hoặc `-`.
+
+Folder ID của DRIVE được GUI lưu riêng trong `content/delivery.private.json`. File này bị Git bỏ qua và không được website phục vụ; không đưa folder ID vào `content/catalog.json`. Dạng file private:
+
+```json
+{
+  "driveFolders": {
+    "blender-co-ban": "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+  }
+}
+```
 
 ```json
 {
@@ -75,8 +88,9 @@ Bot và API tự nạp lại catalog sau khi app lưu, không cần khởi độ
   "forumVisible": true,
   "published": true,
   "rightsVerified": true,
-  "streamAvailable": false,
-  "saleEnabled": false,
+  "deliveryMode": "STREAM",
+  "streamAvailable": true,
+  "saleEnabled": true,
   "lessons": [
     { "id": "giao-dien", "title": "Làm quen giao diện", "published": true }
   ]
@@ -149,12 +163,12 @@ Máy cá nhân dùng cùng `DATABASE_URL` với Render và phải có `SEPAY_API
 
 ## Luồng sử dụng
 
-1. Người dùng chạy `/mua`, chọn khóa hoặc gói tháng và nhận QR.
-2. SePay báo tiền vào; server mở quyền cho đúng Discord ID.
-3. Người dùng chạy `/hoc`, chọn khóa và bài.
-4. Bot gửi `/learn?course=...&lesson=...`.
+1. Người dùng chạy `/mua` hoặc bấm nút thanh toán trên forum.
+2. Khóa DRIVE hỏi email Google trước khi tạo QR; khóa STREAM và gói tháng tạo QR ngay.
+3. SePay báo tiền vào: DRIVE cấp quyền xem thư mục, STREAM mở quyền cho Discord ID.
+4. Với STREAM, người dùng chạy `/hoc`, chọn khóa/bài và nhận link `/learn?...`.
 5. Website yêu cầu Discord OAuth, kiểm quyền rồi cấp cookie phát HLS trong một giờ.
 
-Đơn HLS hết hiệu lực sau 30 phút để giá cũ không được sử dụng về sau. Nếu đã chuyển khoản sau thời hạn này, admin cần đối soát và xử lý thủ công.
+Đơn HLS và DRIVE hết hiệu lực sau 30 phút để giá hoặc thư mục cũ không được sử dụng về sau. Link dự phòng DRIVE chỉ cấp quyền sau khi SePay đã đánh dấu đơn là `paid`. Nếu đã chuyển khoản sau thời hạn này, admin cần đối soát và xử lý thủ công.
 
 HLS và cookie ký hạn chế chia sẻ link nhưng không phải DRM và không thể ngăn quay màn hình tuyệt đối.

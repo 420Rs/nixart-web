@@ -1,11 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { ChannelType, REST, Routes } = require("discord.js");
-const { isCourseContentReady, isForumCourseSaleReady } = require("../learning");
+const { DELIVERY_MODES, driveFolderId, effectiveDeliveryMode, isForumCourseSaleReady } = require("../learning");
 
 const DEFAULT_CHANNEL_ID = "1526640814472691804";
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
-const STREAM_TAG_NAMES = Object.freeze(["STREAM", "NON-STREAM"]);
+const DELIVERY_TAG_NAMES = DELIVERY_MODES;
 
 function truncateText(value, limit) {
   return Array.from(String(value || "").normalize("NFC")).slice(0, limit).join("");
@@ -67,6 +67,16 @@ function validateCatalogForSync(catalog) {
     for (const field of ["forumVisible", "published", "rightsVerified", "streamAvailable", "saleEnabled"]) {
       if (typeof course[field] !== "boolean") throw new Error(`${field} phải là boolean ở khóa học: ${id}`);
     }
+    if (course.deliveryMode !== undefined && !DELIVERY_MODES.includes(course.deliveryMode)) {
+      throw new Error(`deliveryMode không hợp lệ ở khóa học: ${id}`);
+    }
+    if (course.deliveryMode !== undefined && course.streamAvailable !== (course.deliveryMode === "STREAM")) {
+      throw new Error(`streamAvailable không khớp deliveryMode ở khóa học: ${id}`);
+    }
+    if (course.driveFolderId !== undefined && (typeof course.driveFolderId !== "string" || course.driveFolderId.length > 300
+        || (course.driveFolderId && !driveFolderId(course.driveFolderId)))) {
+      throw new Error(`driveFolderId không hợp lệ ở khóa học: ${id}`);
+    }
     if (!Array.isArray(course.lessons)) throw new Error(`Danh sách bài học không hợp lệ: ${id}`);
     const lessonIds = new Set();
     for (const lesson of course.lessons) {
@@ -107,8 +117,8 @@ function previewButton(course) {
   return url ? { type: 2, style: 5, label: "Xem trước", url } : null;
 }
 
-function streamTagName(course) {
-  return isCourseContentReady(course) ? "STREAM" : "NON-STREAM";
+function deliveryTagName(course) {
+  return effectiveDeliveryMode(course);
 }
 
 function publishedLessonCount(course) {
@@ -117,17 +127,17 @@ function publishedLessonCount(course) {
     : 0;
 }
 
-function streamTagIds(channel) {
+function deliveryTagIds(channel) {
   const tags = Array.isArray(channel?.available_tags) ? channel.available_tags : [];
-  return Object.fromEntries(STREAM_TAG_NAMES.map(name => {
+  return Object.fromEntries(DELIVERY_TAG_NAMES.map(name => {
     const tag = tags.find(item => String(item?.name || "").toUpperCase() === name);
     return [name, tag?.id || ""];
   }));
 }
 
-async function ensureStreamTags(rest, channel) {
-  let ids = streamTagIds(channel);
-  const missing = STREAM_TAG_NAMES.filter(name => !ids[name]);
+async function ensureDeliveryTags(rest, channel) {
+  let ids = deliveryTagIds(channel);
+  const missing = DELIVERY_TAG_NAMES.filter(name => !ids[name]);
   if (!missing.length) return ids;
   const current = Array.isArray(channel.available_tags) ? channel.available_tags : [];
   if (current.length + missing.length > 20) throw new Error("Forum đã đạt giới hạn 20 tag");
@@ -142,24 +152,24 @@ async function ensureStreamTags(rest, channel) {
     ...missing.map(name => ({ name, moderated: false })),
   ];
   const updated = await rest.patch(Routes.channel(channel.id), { body: { available_tags: availableTags } });
-  ids = streamTagIds(updated);
-  if (STREAM_TAG_NAMES.some(name => !ids[name])) throw new Error("Discord không trả về đủ tag STREAM/NON-STREAM");
+  ids = deliveryTagIds(updated);
+  if (DELIVERY_TAG_NAMES.some(name => !ids[name])) throw new Error("Discord không trả về đủ tag DRIVE/STREAM/NON-STREAM");
   return ids;
 }
 
-function mergeAppliedStreamTag(appliedTags, tagIds, course) {
-  const managed = new Set(STREAM_TAG_NAMES.map(name => tagIds?.[name]).filter(Boolean));
+function mergeAppliedDeliveryTag(appliedTags, tagIds, course) {
+  const managed = new Set(DELIVERY_TAG_NAMES.map(name => tagIds?.[name]).filter(Boolean));
   const kept = (Array.isArray(appliedTags) ? appliedTags : []).filter(id => !managed.has(id));
-  const desired = tagIds?.[streamTagName(course)];
+  const desired = tagIds?.[deliveryTagName(course)];
   if (!desired) return kept;
-  if (kept.length >= 5) throw new Error(`Bài ${course.id} đã có đủ 5 tag; không thể thêm ${streamTagName(course)}`);
+  if (kept.length >= 5) throw new Error(`Bài ${course.id} đã có đủ 5 tag; không thể thêm ${deliveryTagName(course)}`);
   return [...kept, desired];
 }
 
 function buildForumPost(course, tagIds = {}) {
   const name = threadName(course);
   const description = truncateText(stripLinks(course?.description) || "Thông tin khóa học sẽ được cập nhật.", 4096);
-  const lessonCount = publishedLessonCount(course);
+  const lessonCount = effectiveDeliveryMode(course) === "STREAM" ? publishedLessonCount(course) : 0;
   const price = Number(course?.price);
   const saleReady = isForumCourseSaleReady(course);
   const embed = {
@@ -168,7 +178,7 @@ function buildForumPost(course, tagIds = {}) {
     color: 0x2a2a2e,
     fields: [
       { name: "Trạng thái", value: saleReady ? "Đang mở bán" : "Chưa mở bán", inline: true },
-      { name: "Hình thức", value: streamTagName(course), inline: true },
+      { name: "Hình thức", value: deliveryTagName(course), inline: true },
       { name: "Số bài học", value: String(lessonCount), inline: true },
       { name: "Giá", value: saleReady && Number.isFinite(price) ? `${new Intl.NumberFormat("vi-VN").format(price)}đ` : "Đang cập nhật", inline: true },
     ],
@@ -188,7 +198,7 @@ function buildForumPost(course, tagIds = {}) {
       allowed_mentions: { parse: [] },
     },
   };
-  const appliedTags = mergeAppliedStreamTag([], tagIds, course);
+  const appliedTags = mergeAppliedDeliveryTag([], tagIds, course);
   if (appliedTags.length) post.applied_tags = appliedTags;
   return post;
 }
@@ -259,7 +269,7 @@ async function publish(courses, channelId, token) {
   if (channel.type !== ChannelType.GuildForum || !channel.guild_id) {
     throw new Error(`Channel ${channelId} không phải GuildForum`);
   }
-  const tagIds = await ensureStreamTags(rest, channel);
+  const tagIds = await ensureDeliveryTags(rest, channel);
 
   const [active, archived] = await Promise.all([
     rest.get(Routes.guildActiveThreads(channel.guild_id)),
@@ -276,7 +286,7 @@ async function publish(courses, channelId, token) {
       const channelUpdate = {};
       if (thread.name !== post.name) channelUpdate.name = post.name;
       if (thread.thread_metadata?.archived) channelUpdate.archived = false;
-      const appliedTags = mergeAppliedStreamTag(thread.applied_tags, tagIds, course);
+      const appliedTags = mergeAppliedDeliveryTag(thread.applied_tags, tagIds, course);
       if (JSON.stringify(appliedTags) !== JSON.stringify(thread.applied_tags || [])) channelUpdate.applied_tags = appliedTags;
       if (Object.keys(channelUpdate).length) {
         await rest.patch(Routes.channel(thread.id), { body: channelUpdate });
@@ -334,14 +344,14 @@ module.exports = {
   courseIdFromMessage,
   existingThreadNames,
   indexExistingThreads,
-  ensureStreamTags,
-  mergeAppliedStreamTag,
+  deliveryTagIds,
+  deliveryTagName,
+  ensureDeliveryTags,
+  mergeAppliedDeliveryTag,
   paymentButton,
   previewButton,
   safeHttpsUrl,
   stripLinks,
-  streamTagIds,
-  streamTagName,
   threadName,
   validateCatalogForSync,
   visibleCourses,

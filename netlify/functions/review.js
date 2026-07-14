@@ -41,6 +41,13 @@ async function grantDriveAccess(order) {
   const folderMatch = folderValue.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   const folderId = folderMatch ? folderMatch[1] : folderValue;
   if (!/^[a-zA-Z0-9_-]{10,}$/.test(folderId)) throw Object.assign(new Error("Google Drive Folder ID khong hop le"), { code: 400 });
+  const permissions = await drive.permissions.list({
+    fileId: folderId,
+    fields: "permissions(id,emailAddress,role,type)"
+  });
+  const existing = (permissions.data.permissions || []).find(permission =>
+    permission.type === "user" && String(permission.emailAddress || "").toLowerCase() === String(order.email || "").toLowerCase());
+  if (existing?.id) return existing.id;
   const response = await drive.permissions.create({
     fileId: folderId,
     sendNotificationEmail: true,
@@ -71,6 +78,13 @@ exports.handler = async (event) => {
       const order = rows[0];
       if (!order) return page("Không tìm thấy đơn", "<p>Liên kết không tồn tại hoặc đã bị xóa.</p>", 404);
       if (!["pending", "paid"].includes(order.status)) return page("Đơn đã được xử lý", `<p>Trạng thái hiện tại: <code>${esc(order.status)}</code>.</p>`);
+      if (order.delivery_type === "drive" && order.status !== "paid") {
+        return page("Đang chờ thanh toán", `
+          <div class="row"><span class="label">Khóa học</span>${esc(order.course_title)}</div>
+          <div class="row"><span class="label">Nội dung chuyển khoản</span><code>${esc(order.purchase_code)}</code></div>
+          <div class="row"><span class="label">Email Google</span>${esc(order.email)}</div>
+          <p>Chưa có xác nhận thanh toán từ SePay. Trang này không thể cấp quyền Drive trước khi đơn chuyển sang trạng thái <code>paid</code>.</p>`, 409);
+      }
 
       return page("Xác nhận thanh toán", `
         <div class="row"><span class="label">Khóa học</span>${esc(order.course_title)}</div>
@@ -96,7 +110,8 @@ exports.handler = async (event) => {
 
     const claimed = await sql`
       UPDATE purchase_orders SET status = 'processing'
-      WHERE token_hash = ${tokenHash} AND status IN ('pending', 'paid')
+      WHERE token_hash = ${tokenHash}
+        AND ((delivery_type = 'manual' AND status IN ('pending', 'paid')) OR (delivery_type = 'drive' AND status = 'paid'))
       RETURNING id, course_title, drive_folder_id, email, delivery_type
     `;
     const order = claimed[0];
@@ -120,12 +135,12 @@ exports.handler = async (event) => {
       const permissionId = await grantDriveAccess(order);
       await sql`
         UPDATE purchase_orders
-        SET status = 'approved', drive_permission_id = ${permissionId}, reviewed_at = NOW()
+        SET status = 'approved', drive_permission_id = ${permissionId}, paid_at = COALESCE(paid_at, NOW()), reviewed_at = NOW()
         WHERE id = ${order.id}
       `;
       return page("Đã cấp quyền", `<p><strong>${esc(order.email)}</strong> đã được thêm vào thư mục khóa học với quyền xem.</p>`);
     } catch (error) {
-      await sql`UPDATE purchase_orders SET status = 'pending' WHERE id = ${order.id}`;
+      await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
       console.error("drive permission error", error);
       const code = Number(error.code || error.response?.status || 0);
       let reason = "Kiểm tra GOOGLE_SERVICE_ACCOUNT_JSON trên Netlify.";
@@ -133,7 +148,7 @@ exports.handler = async (event) => {
       if (code === 401) reason = "Khóa service account không hợp lệ hoặc đã bị thu hồi.";
       if (code === 403) reason = "Google Drive API chưa bật, hoặc service account chưa có quyền Editor và quyền chia sẻ thư mục.";
       if (code === 404) reason = "Không tìm thấy thư mục. Folder ID có thể sai hoặc thư mục chưa được chia sẻ cho service account.";
-      return page("Cấp quyền thất bại", `<p>${esc(reason)}</p><p>Đơn vẫn ở trạng thái chờ. Sửa cấu hình rồi mở lại link Discord để thử lại.</p>`, 502);
+      return page("Cấp quyền thất bại", `<p>${esc(reason)}</p><p>Đơn vẫn giữ trạng thái đã thanh toán. Sửa cấu hình rồi mở lại link Discord để thử lại.</p>`, 502);
     }
   } catch (error) {
     console.error("review error", error);

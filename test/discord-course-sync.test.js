@@ -4,14 +4,14 @@ const {
   buildForumPost,
   buildHiddenForumMessage,
   courseIdFromMessage,
-  ensureStreamTags,
+  deliveryTagName,
+  ensureDeliveryTags,
   existingThreadNames,
   indexExistingThreads,
-  mergeAppliedStreamTag,
+  mergeAppliedDeliveryTag,
   paymentButton,
   previewButton,
   safeHttpsUrl,
-  streamTagName,
   threadName,
   validateCatalogForSync,
   visibleCourses,
@@ -34,7 +34,8 @@ test("forum sync is visible-only, idempotent and strips links", () => {
 
 test("payment button fails closed unless every sale flag is verified", () => {
   const base = {
-    id: "blender", forumVisible: true, published: true, rightsVerified: true, streamAvailable: true, saleEnabled: true, price: 200000,
+    id: "blender", forumVisible: true, published: true, rightsVerified: true, deliveryMode: "STREAM",
+    driveFolderId: "", streamAvailable: true, saleEnabled: true, price: 200000,
     lessons: [{ id: "lesson-1", title: "Bài 1", published: true }]
   };
   assert.deepEqual(paymentButton(base), { type: 2, style: 1, label: "Thanh toán", custom_id: "buy_course:blender", disabled: false });
@@ -47,6 +48,14 @@ test("payment button fails closed unless every sale flag is verified", () => {
     assert.equal(button.style, 2);
     assert.equal(button.label, "Thanh toán — chưa mở");
   }
+
+  const drive = {
+    ...base, deliveryMode: "DRIVE", streamAvailable: false, lessons: [],
+    driveFolderId: "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+  };
+  assert.equal(paymentButton(drive).disabled, false);
+  assert.equal(buildForumPost(drive).message.embeds[0].fields[1].value, "DRIVE");
+  assert.equal(buildForumPost({ ...drive, driveFolderId: "" }).message.components[0].components[0].disabled, true);
 });
 
 test("course cover and preview accept safe HTTPS URLs only", () => {
@@ -56,6 +65,8 @@ test("course cover and preview accept safe HTTPS URLs only", () => {
     forumVisible: true,
     rightsVerified: true,
     published: true,
+    deliveryMode: "STREAM",
+    driveFolderId: "",
     streamAvailable: true,
     lessons: [{ id: "lesson-1", title: "Lesson 1", published: true }],
     imageUrl: "https://cdn.example/cover.jpg",
@@ -89,7 +100,7 @@ test("course cover and preview accept safe HTTPS URLs only", () => {
   assert.equal(unverified.message.components[0].components.length, 1);
 });
 
-test("stream tags are created once and merged without removing other tags", async () => {
+test("delivery tags are created once and merged without removing other tags", async () => {
   let patchBody;
   const rest = {
     patch: async (_route, { body }) => {
@@ -100,17 +111,20 @@ test("stream tags are created once and merged without removing other tags", asyn
       };
     },
   };
-  const ids = await ensureStreamTags(rest, { id: "forum", available_tags: [{ id: "level", name: "Beginner" }] });
-  assert.equal(patchBody.available_tags.length, 3);
+  const ids = await ensureDeliveryTags(rest, { id: "forum", available_tags: [{ id: "level", name: "Beginner" }] });
+  assert.equal(patchBody.available_tags.length, 4);
+  assert.ok(ids.DRIVE);
   assert.ok(ids.STREAM);
   assert.ok(ids["NON-STREAM"]);
   const ready = {
-    id: "a", published: true, rightsVerified: true, streamAvailable: true,
+    id: "a", published: true, rightsVerified: true, deliveryMode: "STREAM", driveFolderId: "", streamAvailable: true,
     lessons: [{ id: "lesson-1", title: "Lesson 1", published: true }],
   };
-  assert.deepEqual(mergeAppliedStreamTag(["level", ids["NON-STREAM"]], ids, ready), ["level", ids.STREAM]);
-  assert.equal(streamTagName({ ...ready, lessons: [] }), "NON-STREAM");
-  assert.equal(streamTagName({ streamAvailable: false }), "NON-STREAM");
+  assert.deepEqual(mergeAppliedDeliveryTag(["level", ids["NON-STREAM"]], ids, ready), ["level", ids.STREAM]);
+  const drive = { ...ready, deliveryMode: "DRIVE", streamAvailable: false, lessons: [], driveFolderId: "1AbCdEfGhIjKlMnOpQrStUvWxYz" };
+  assert.deepEqual(mergeAppliedDeliveryTag(["level", ids.STREAM], ids, drive), ["level", ids.DRIVE]);
+  assert.equal(deliveryTagName({ ...ready, lessons: [] }), "NON-STREAM");
+  assert.equal(deliveryTagName({ streamAvailable: false }), "NON-STREAM");
 });
 
 test("catalog validation blocks malformed data and mass archive accidents", () => {
@@ -123,6 +137,8 @@ test("catalog validation blocks malformed data and mass archive accidents", () =
     forumVisible: true,
     published: false,
     rightsVerified: false,
+    deliveryMode: "NON-STREAM",
+    driveFolderId: "",
     streamAvailable: false,
     saleEnabled: false,
     lessons: [],
@@ -135,6 +151,9 @@ test("catalog validation blocks malformed data and mass archive accidents", () =
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, previewUrl: "javascript:alert(1)" }] }), /URL HTTPS/);
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, previewUrl: `https://example.com/${"a".repeat(500)}` }] }), /512/);
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, title: "Blender\u202Egpj.exe" }] }), /điều khiển/);
+  assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "drive" }] }), /deliveryMode/);
+  assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "DRIVE", streamAvailable: true }] }), /không khớp/);
+  assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "DRIVE", driveFolderId: "bad" }] }), /driveFolderId/);
 });
 
 test("forum upsert indexes only starter posts authored by this bot", async () => {

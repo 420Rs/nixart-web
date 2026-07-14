@@ -4,10 +4,30 @@ const path = require("node:path");
 const { neon } = require("@neondatabase/serverless");
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
+const DELIVERY_MODES = Object.freeze(["DRIVE", "STREAM", "NON-STREAM"]);
+const DRIVE_FOLDER_ID_RE = /^[a-zA-Z0-9_-]{10,200}$/;
 const CATALOG_PATH = path.join(__dirname, "content", "catalog.json");
+const DELIVERY_CONFIG_PATH = path.join(__dirname, "content", "delivery.private.json");
 const EMPTY_CATALOG = Object.freeze({ name: "NIXART", tagline: "", discordUrl: "", plans: [], courses: [] });
 let sqlClient;
 let tablesReady;
+
+function driveFolderId(value) {
+  const raw = String(value || "").trim();
+  if (DRIVE_FOLDER_ID_RE.test(raw)) return raw;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.hostname !== "drive.google.com" || url.username || url.password) return "";
+    return url.pathname.match(/\/folders\/([a-zA-Z0-9_-]{10,200})(?:\/|$)/)?.[1] || "";
+  } catch {
+    return "";
+  }
+}
+
+function courseDeliveryMode(course) {
+  if (DELIVERY_MODES.includes(course?.deliveryMode)) return course.deliveryMode;
+  return course?.streamAvailable === true ? "STREAM" : "NON-STREAM";
+}
 
 function validCatalog(catalog) {
   if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)
@@ -31,6 +51,10 @@ function validCatalog(catalog) {
       && Number.isSafeInteger(item.price) && item.price >= 0 && item.price <= 2_000_000_000
       && ["basic", "full"].includes(item.planTier)
       && ["published", "forumVisible", "rightsVerified", "streamAvailable", "saleEnabled"].every(field => typeof item[field] === "boolean")
+      && (item.deliveryMode === undefined || DELIVERY_MODES.includes(item.deliveryMode))
+      && (item.deliveryMode === undefined || item.streamAvailable === (item.deliveryMode === "STREAM"))
+      // Folder IDs live in the ignored private delivery file, never in the public catalog.
+      && (item.driveFolderId === undefined || item.driveFolderId === "")
       && (!item.imageUrl || Boolean(publicUrl(item.imageUrl, 2000)))
       && (!item.previewUrl || Boolean(publicUrl(item.previewUrl, 512)))
       && Array.isArray(item.lessons)
@@ -52,12 +76,34 @@ function loadCatalog() {
       const after = fs.statSync(CATALOG_PATH);
       if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || source.length !== after.size) continue;
       const next = JSON.parse(source.toString("utf8"));
-      return validCatalog(next) ? next : EMPTY_CATALOG;
+      if (!validCatalog(next)) return EMPTY_CATALOG;
+      const driveFolders = loadPrivateDriveFolders();
+      return {
+        ...next,
+        courses: next.courses.map(course => ({
+          ...course,
+          driveFolderId: courseDeliveryMode(course) === "DRIVE" ? driveFolders[course.id] || "" : ""
+        }))
+      };
     } catch {
       // Retry one transient replace/read race, then fail closed for purchases and playback.
     }
   }
   return EMPTY_CATALOG;
+}
+
+function loadPrivateDriveFolders() {
+  try {
+    const source = fs.readFileSync(DELIVERY_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(String(source).replace(/^\uFEFF/, ""));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+        || !parsed.driveFolders || typeof parsed.driveFolders !== "object" || Array.isArray(parsed.driveFolders)) return {};
+    return Object.fromEntries(Object.entries(parsed.driveFolders)
+      .filter(([courseId, folder]) => ID_RE.test(courseId) && Boolean(driveFolderId(folder)))
+      .map(([courseId, folder]) => [courseId, driveFolderId(folder)]));
+  } catch {
+    return {};
+  }
 }
 
 function db() {
@@ -81,11 +127,23 @@ function hasPublishedLesson(course) {
 }
 
 function isCourseContentReady(course) {
-  return isCourseListed(course) && course?.streamAvailable === true && hasPublishedLesson(course);
+  return isCourseListed(course) && courseDeliveryMode(course) === "STREAM"
+    && course?.streamAvailable === true && hasPublishedLesson(course);
+}
+
+function isDriveCourseReady(course) {
+  return isCourseListed(course) && courseDeliveryMode(course) === "DRIVE" && Boolean(driveFolderId(course?.driveFolderId));
+}
+
+function effectiveDeliveryMode(course) {
+  if (isDriveCourseReady(course)) return "DRIVE";
+  if (isCourseContentReady(course)) return "STREAM";
+  return "NON-STREAM";
 }
 
 function isCourseSaleReady(course) {
-  return isCourseContentReady(course) && course?.saleEnabled === true && Number(course.price) > 0;
+  return course?.saleEnabled === true && Number.isSafeInteger(course?.price) && course.price > 0
+    && ["DRIVE", "STREAM"].includes(effectiveDeliveryMode(course));
 }
 
 function isForumCourseSaleReady(course) {
@@ -129,12 +187,13 @@ function publicCatalog() {
       description: String(course.description || ""),
       price: Number(course.price) || 0,
       planTier: String(course.planTier || ""),
-      // Expose STREAM only when the course can actually serve a published lesson.
-      streamAvailable: isCourseContentReady(course),
+      deliveryMode: effectiveDeliveryMode(course),
+      // Keep the old flag for landing clients deployed before deliveryMode.
+      streamAvailable: effectiveDeliveryMode(course) === "STREAM",
       saleEnabled: isCourseSaleReady(course),
       imageUrl: publicUrl(course.imageUrl, 2000),
       previewUrl: publicUrl(course.previewUrl, 512),
-      lessons: (course.lessons || []).filter(item => item.published).map(lesson => ({
+      lessons: (effectiveDeliveryMode(course) === "STREAM" ? course.lessons || [] : []).filter(item => item.published).map(lesson => ({
         id: String(lesson.id || ""),
         title: String(lesson.title || ""),
         duration: String(lesson.duration || "")
@@ -146,6 +205,11 @@ function publicCatalog() {
 function findCourse(courseId) {
   const id = cleanId(courseId);
   return getCatalog().courses.find(course => isCourseContentReady(course) && course.id === id) || null;
+}
+
+function findSaleCourse(courseId) {
+  const id = cleanId(courseId);
+  return getCatalog().courses.find(course => isCourseSaleReady(course) && course.id === id) || null;
 }
 
 function findLesson(course, lessonId) {
@@ -216,6 +280,21 @@ async function ensureLearningTables() {
       CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_pending_hls_idx
       ON purchase_orders (discord_id, course_id)
       WHERE delivery_type = 'hls' AND status = 'pending'
+    `;
+    await sql`
+      WITH duplicates AS (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY discord_id, course_id ORDER BY created_at DESC) AS position
+        FROM purchase_orders
+        WHERE delivery_type = 'drive' AND status = 'pending' AND discord_id IS NOT NULL
+      )
+      UPDATE purchase_orders
+      SET status = 'expired'
+      WHERE id IN (SELECT id FROM duplicates WHERE position > 1)
+    `;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_pending_drive_idx
+      ON purchase_orders (discord_id, course_id)
+      WHERE delivery_type = 'drive' AND status = 'pending' AND discord_id IS NOT NULL
     `;
     await sql`
       CREATE TABLE IF NOT EXISTS learning_entitlements (
@@ -301,13 +380,70 @@ async function hasCourseAccess(discordId, course) {
 
 function productFor(scope, value) {
   if (scope === "course") {
-    const course = findCourse(value);
-    if (!isCourseSaleReady(course)) return null;
-    return { id: course.id, title: course.title, amount: Number(course.price), scope: "course", days: null };
+    const course = findSaleCourse(value);
+    if (!course) return null;
+    const mode = effectiveDeliveryMode(course);
+    return {
+      id: course.id,
+      title: course.title,
+      amount: Number(course.price),
+      scope: "course",
+      days: null,
+      deliveryType: mode === "DRIVE" ? "drive" : "hls",
+      driveFolderId: mode === "DRIVE" ? driveFolderId(course.driveFolderId) : ""
+    };
   }
   const plan = findPlan(scope);
   if (!plan || !["basic", "full"].includes(scope) || !Number(plan.price)) return null;
-  return { id: `plan:${scope}`, title: plan.title, amount: Number(plan.price), scope, days: Number(plan.durationDays || 30) };
+  return { id: `plan:${scope}`, title: plan.title, amount: Number(plan.price), scope, days: Number(plan.durationDays || 30), deliveryType: "hls", driveFolderId: "" };
+}
+
+function googleEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  const atom = "[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}";
+  const label = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+  const local = email.split("@", 1)[0];
+  return email.length <= 254 && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..")
+    && new RegExp(`^${atom}@${label}(?:\\.${label})+$`, "i").test(email) ? email : "";
+}
+
+function escapeDiscordMarkdown(value) {
+  return String(value || "").replace(/[\\`*_~|\[\]()]/g, "\\$&");
+}
+
+function driveReviewUrl(token) {
+  try {
+    const base = new URL(String(process.env.PUBLIC_BASE_URL || ""));
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash || !["", "/"].includes(base.pathname)) return "";
+    return `${base.origin}/review?${new URLSearchParams({ token })}`;
+  } catch {
+    return "";
+  }
+}
+
+async function notifyDriveReview({ token, product, purchaseCode, email }) {
+  const webhook = String(process.env.DISCORD_WEBHOOK_URL || "").trim();
+  const reviewUrl = driveReviewUrl(token);
+  if (!webhook || !reviewUrl) throw new Error("Thiếu DISCORD_WEBHOOK_URL hoặc PUBLIC_BASE_URL để dự phòng đơn Drive");
+  const response = await fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "Nixart Orders",
+      allowed_mentions: { parse: [] },
+      embeds: [{
+        title: "Đơn Google Drive mới",
+        color: 0x5ec98a,
+        fields: [
+          { name: "Khóa học", value: escapeDiscordMarkdown(product.title).slice(0, 1024) },
+          { name: "Mã đơn", value: purchaseCode, inline: true },
+          { name: "Email Google", value: escapeDiscordMarkdown(email).slice(0, 1024) },
+          { name: "Dự phòng / thử lại", value: `[Mở trang duyệt riêng](${reviewUrl})` }
+        ]
+      }]
+    })
+  });
+  if (!response.ok) throw new Error(`Không gửi được link dự phòng Drive (${response.status})`);
 }
 
 function bankDetails() {
@@ -329,23 +465,27 @@ function paymentQr(product, purchaseCode) {
   return `https://img.vietqr.io/image/${encodeURIComponent(bank.bin)}-${encodeURIComponent(bank.account)}-compact2.png?${query}`;
 }
 
-async function createPurchase({ discordId, displayName, scope, value }) {
+async function createPurchase({ discordId, displayName, scope, value, email = "" }) {
   if (!/^\d{15,25}$/.test(String(discordId || ""))) throw new Error("Discord user id không hợp lệ");
   const product = productFor(cleanId(scope), cleanId(value));
   if (!product) throw new Error("Sản phẩm chưa sẵn sàng");
+  const normalizedEmail = product.deliveryType === "drive" ? googleEmail(email) : `${discordId}@discord.invalid`;
+  if (product.deliveryType === "drive" && !normalizedEmail) throw new Error("Email Google không hợp lệ");
   await ensureLearningTables();
   const sql = db();
   if (product.scope === "course") {
-    const owned = await sql`
-      SELECT 1 FROM learning_entitlements
-      WHERE discord_id = ${String(discordId)} AND access_scope = 'course' AND course_id = ${product.id}
-      LIMIT 1
-    `;
-    if (owned.length) throw new Error("Bạn đã sở hữu khóa học này");
+    if (product.deliveryType === "hls") {
+      const owned = await sql`
+        SELECT 1 FROM learning_entitlements
+        WHERE discord_id = ${String(discordId)} AND access_scope = 'course' AND course_id = ${product.id}
+        LIMIT 1
+      `;
+      if (owned.length) throw new Error("Bạn đã sở hữu khóa học này");
+    }
     const inFlight = await sql`
       SELECT 1 FROM purchase_orders
       WHERE discord_id = ${String(discordId)} AND course_id = ${product.id}
-        AND delivery_type = 'hls' AND access_scope = 'course'
+        AND delivery_type = ${product.deliveryType} AND access_scope = 'course'
         AND status IN ('processing', 'paid', 'approved')
       LIMIT 1
     `;
@@ -354,41 +494,64 @@ async function createPurchase({ discordId, displayName, scope, value }) {
   await sql`
     UPDATE purchase_orders SET status = 'expired'
     WHERE discord_id = ${String(discordId)} AND course_id = ${product.id}
-      AND delivery_type = 'hls' AND status = 'pending'
+      AND delivery_type = ${product.deliveryType} AND status = 'pending'
       AND created_at <= NOW() - INTERVAL '30 minutes'
   `;
   let existing = await sql`
-    SELECT purchase_code, course_title, amount, created_at
+    SELECT id, purchase_code, course_title, amount, email, created_at
     FROM purchase_orders
-    WHERE discord_id = ${String(discordId)} AND course_id = ${product.id} AND status = 'pending'
+    WHERE discord_id = ${String(discordId)} AND course_id = ${product.id}
+      AND delivery_type = ${product.deliveryType} AND status = 'pending'
     ORDER BY created_at DESC LIMIT 1
   `;
+  let reused = Boolean(existing.length);
+  let created = false;
   let purchaseCode = existing[0]?.purchase_code || `NIX${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   if (!existing.length) {
-    const token = crypto.randomBytes(32).toString("hex");
     const inserted = await sql`
       INSERT INTO purchase_orders (
         id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
         email, payer_name, amount, delivery_type, discord_id, access_scope,
         access_days, order_origin
       ) VALUES (
-        ${crypto.randomUUID()}, ${purchaseCode}, ${crypto.createHash("sha256").update(token).digest("hex")},
-        ${product.id}, ${product.title}, '', ${`${discordId}@discord.invalid`},
-        ${String(displayName || discordId).slice(0, 200)}, ${product.amount}, 'hls',
+        ${crypto.randomUUID()}, ${purchaseCode}, ${tokenHash},
+        ${product.id}, ${product.title}, ${product.driveFolderId}, ${normalizedEmail},
+        ${String(displayName || discordId).slice(0, 200)}, ${product.amount}, ${product.deliveryType},
         ${String(discordId)}, ${product.scope}, ${product.days}, 'discord'
       )
       ON CONFLICT DO NOTHING
-      RETURNING purchase_code, course_title, amount, created_at
+      RETURNING id, purchase_code, course_title, amount, email, created_at
     `;
     existing = inserted.length ? [] : await sql`
-      SELECT purchase_code, course_title, amount, created_at
+      SELECT id, purchase_code, course_title, amount, email, created_at
       FROM purchase_orders
       WHERE discord_id = ${String(discordId)} AND course_id = ${product.id}
-        AND delivery_type = 'hls' AND status = 'pending'
+        AND delivery_type = ${product.deliveryType} AND status = 'pending'
       ORDER BY created_at DESC LIMIT 1
     `;
+    if (!inserted.length && existing.length) {
+      reused = true;
+      purchaseCode = existing[0].purchase_code;
+    }
     if (!inserted.length && !existing.length) throw new Error("Không tạo được đơn thanh toán");
-    if (inserted.length) purchaseCode = inserted[0].purchase_code;
+    if (inserted.length) {
+      created = true;
+      purchaseCode = inserted[0].purchase_code;
+    }
+  }
+  let orderEmail = "";
+  if (product.deliveryType === "drive") {
+    orderEmail = created ? normalizedEmail : googleEmail(existing[0]?.email);
+    if (!orderEmail || orderEmail !== normalizedEmail) {
+      const suffix = orderEmail ? ` với email ${orderEmail}` : "";
+      throw new Error(`Bạn đã có đơn Drive đang chờ${suffix}. Hãy dùng đúng email đó hoặc đợi 30 phút để tạo lại.`);
+    }
+    if (created) {
+      await notifyDriveReview({ token, product, purchaseCode, email: orderEmail })
+        .catch(error => console.error("drive review notification error", error));
+    }
   }
   return {
     purchaseCode,
@@ -396,7 +559,10 @@ async function createPurchase({ discordId, displayName, scope, value }) {
     amount: Number(existing[0]?.amount || product.amount),
     bank: bankDetails(),
     qrUrl: paymentQr({ ...product, amount: Number(existing[0]?.amount || product.amount) }, purchaseCode),
-    reused: Boolean(existing.length)
+    reused,
+    deliveryType: product.deliveryType,
+    scope: product.scope,
+    email: orderEmail
   };
 }
 
@@ -484,20 +650,28 @@ async function approveHlsOrder(orderId, discordId, scope, days) {
 }
 
 module.exports = {
+  DELIVERY_MODES,
   ID_RE,
   approveHlsOrder,
   canAccessCourse,
   cleanId,
+  courseDeliveryMode,
   createPurchase,
+  driveFolderId,
+  effectiveDeliveryMode,
+  escapeDiscordMarkdown,
   ensureLearningTables,
   findCourse,
   findLesson,
   findPlan,
+  findSaleCourse,
   getCatalog,
   getEntitlements,
+  googleEmail,
   hasPublishedLesson,
   hasCourseAccess,
   isCourseContentReady,
+  isDriveCourseReady,
   isCourseListed,
   isCourseSaleReady,
   isForumCourseSaleReady,

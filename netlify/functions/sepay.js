@@ -1,6 +1,6 @@
 const { neon } = require("@neondatabase/serverless");
 const { google } = require("googleapis");
-const { approveHlsOrder, ensureLearningTables } = require("../../learning");
+const { approveHlsOrder, ensureLearningTables, escapeDiscordMarkdown } = require("../../learning");
 
 let sqlClient;
 function db() {
@@ -53,6 +53,13 @@ async function grantDriveAccess(order) {
   const drive = google.drive({ version: "v3", auth });
   const folderValue = String(order.drive_folder_id || "").trim();
   const folderId = folderValue.match(/\/folders\/([a-zA-Z0-9_-]+)/)?.[1] || folderValue;
+  const permissions = await drive.permissions.list({
+    fileId: folderId,
+    fields: "permissions(id,emailAddress,role,type)"
+  });
+  const existing = (permissions.data.permissions || []).find(permission =>
+    permission.type === "user" && String(permission.emailAddress || "").toLowerCase() === String(order.email || "").toLowerCase());
+  if (existing?.id) return existing.id;
   const response = await drive.permissions.create({
     fileId: folderId,
     sendNotificationEmail: true,
@@ -76,10 +83,10 @@ async function notifyDiscord(order, purchaseCode, amount) {
         title: "Đã nhận thanh toán",
         color: 0x4ddb8e,
         fields: [
-          { name: "Sản phẩm", value: order.course_title.slice(0, 1024) },
+          { name: "Sản phẩm", value: escapeDiscordMarkdown(order.course_title).slice(0, 1024) },
           { name: "Số tiền", value: `${Number(amount).toLocaleString("vi-VN")} đ`, inline: true },
           { name: "Mã đơn", value: purchaseCode, inline: true },
-          { name: "Email Google", value: order.email.slice(0, 1024) }
+          { name: "Email Google", value: escapeDiscordMarkdown(order.email).slice(0, 1024) }
         ],
         timestamp: new Date().toISOString()
       }]
@@ -92,14 +99,14 @@ async function claimOrder(sql, purchaseCode, amount, reference) {
   await sql`
     UPDATE purchase_orders
     SET status = 'expired'
-    WHERE purchase_code = ${purchaseCode} AND delivery_type = 'hls' AND status = 'pending'
+    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive') AND status = 'pending'
       AND created_at <= NOW() - INTERVAL '30 minutes'
   `;
   const rows = await sql`
     UPDATE purchase_orders
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-      AND (status = 'paid' OR delivery_type <> 'hls' OR created_at > NOW() - INTERVAL '30 minutes')
+      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive') OR created_at > NOW() - INTERVAL '30 minutes')
     RETURNING id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
@@ -167,16 +174,16 @@ exports.handler = async (event) => {
       const permissionId = await grantDriveAccess(order);
       await sql`
         UPDATE purchase_orders
-        SET status = 'approved', drive_permission_id = ${permissionId}, reviewed_at = NOW()
+        SET status = 'approved', drive_permission_id = ${permissionId}, paid_at = COALESCE(paid_at, NOW()), reviewed_at = NOW()
         WHERE id = ${order.id}
       `;
       await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
       return json(200, { success: true, status: "approved" });
     } catch (error) {
-      await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
+      await sql`UPDATE purchase_orders SET status = 'paid', paid_at = COALESCE(paid_at, NOW()) WHERE id = ${order.id}`;
       await sql`UPDATE sepay_transactions SET match_status = 'drive_failed' WHERE id = ${transactionId}`;
       console.error("sepay drive grant error", error);
-      return json(200, { success: true, status: "paid", delivery: "drive_failed" });
+      return json(500, { success: false, status: "paid", delivery: "drive_failed" });
     }
   } catch (error) {
     console.error("sepay webhook error", error);

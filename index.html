@@ -231,8 +231,9 @@
     .course-card:hover { border-color: #484850; transform: translateY(-3px); }
     .course-cover { width: calc(100% + 48px); height: 158px; margin: -24px -24px 22px; border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; background: #0f0f11; object-fit: cover; }
     .course-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 42px; color: var(--dim); font: .72rem "Cascadia Mono", Consolas, monospace; text-transform: uppercase; }
-    .course-stream { padding: 4px 7px; border: 1px solid #404047; border-radius: 999px; white-space: nowrap; }
-    .course-stream[data-stream="true"] { border-color: rgba(94,201,138,.5); color: var(--ok); background: rgba(94,201,138,.06); }
+    .course-delivery { padding: 4px 7px; border: 1px solid #404047; border-radius: 999px; white-space: nowrap; }
+    .course-delivery[data-delivery="STREAM"] { border-color: rgba(94,201,138,.5); color: var(--ok); background: rgba(94,201,138,.06); }
+    .course-delivery[data-delivery="DRIVE"] { border-color: rgba(88,101,242,.55); color: #aeb6ff; background: rgba(88,101,242,.08); }
     .course-card h3 { margin-bottom: 8px; font-size: 1.05rem; }
     .course-card p { margin-bottom: 22px; color: var(--muted); font-size: .78rem; }
     .course-actions { display: flex; gap: 16px; align-items: center; margin-top: auto; }
@@ -432,7 +433,7 @@
       discordUrl: "https://discord.gg/B8ZXSNdVaR",
       plans: [
         { name: "Cơ bản", price: 200000, description: "Quyền truy cập nhóm nội dung nền tảng trong 30 ngày.", features: ["Các khóa thuộc nhóm Cơ bản", "Xem trực tiếp trên website", "Hỗ trợ trong cộng đồng Discord"] },
-        { name: "Toàn bộ", price: 500000, description: "Quyền truy cập toàn bộ thư viện đang phát hành trong 30 ngày.", features: ["Toàn bộ khóa học đang phát hành", "Nội dung mới trong thời hạn gói", "Hỗ trợ trong cộng đồng Discord"] }
+        { name: "Toàn bộ", price: 500000, description: "Quyền truy cập toàn bộ thư viện STREAM trong 30 ngày.", features: ["Toàn bộ khóa STREAM đang phát hành", "Nội dung mới trong thời hạn gói", "Hỗ trợ trong cộng đồng Discord"] }
       ],
       courses: []
     };
@@ -552,13 +553,16 @@
         meta.className = "course-meta";
         const code = document.createElement("span");
         code.textContent = `Khóa ${String(index + 1).padStart(2, "0")}`;
-        const stream = document.createElement("span");
-        stream.className = "course-stream";
-        stream.dataset.stream = course.streamAvailable === true ? "true" : "false";
-        stream.textContent = course.streamAvailable === true ? "STREAM" : "NON-STREAM";
+        const delivery = document.createElement("span");
+        const deliveryMode = ["DRIVE", "STREAM"].includes(course.deliveryMode)
+          ? course.deliveryMode
+          : (course.streamAvailable === true ? "STREAM" : "NON-STREAM");
+        delivery.className = "course-delivery";
+        delivery.dataset.delivery = deliveryMode;
+        delivery.textContent = deliveryMode;
         const price = document.createElement("span");
         price.textContent = formatMoney(course.price);
-        meta.append(code, stream, price);
+        meta.append(code, delivery, price);
         const title = document.createElement("h3");
         title.textContent = course.name || course.title || `Khóa học ${index + 1}`;
         const copy = document.createElement("p");

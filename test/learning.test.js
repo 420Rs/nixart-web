@@ -7,8 +7,9 @@ const path = require("node:path");
 process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
 const {
-  canAccessCourse, cleanId, getCatalog, hasPublishedLesson, isCourseContentReady, isCourseListed,
-  isCourseSaleReady, isForumCourseSaleReady, publicCatalog
+  canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail,
+  hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
+  isForumCourseSaleReady, publicCatalog
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
@@ -34,7 +35,7 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(cleanId("../secret"), "");
   assert.equal(isCourseContentReady({ published: true, rightsVerified: false }), false);
   const ready = {
-    published: true, rightsVerified: true, streamAvailable: true, saleEnabled: true,
+    published: true, rightsVerified: true, deliveryMode: "STREAM", streamAvailable: true, saleEnabled: true,
     lessons: [{ id: "lesson-1", title: "Bài 1", published: true }]
   };
   assert.equal(isCourseListed({ ...ready, streamAvailable: false }), true);
@@ -48,10 +49,32 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(isCourseSaleReady({ ...ready, price: 50000 }), true);
   assert.equal(isForumCourseSaleReady({ forumVisible: false, published: true, rightsVerified: true, price: 50000 }), false);
   assert.equal(isForumCourseSaleReady({ ...ready, forumVisible: true, price: 50000 }), true);
+
+  const drive = {
+    published: true, rightsVerified: true, deliveryMode: "DRIVE", streamAvailable: false, saleEnabled: true,
+    driveFolderId: "1AbCdEfGhIjKlMnOpQrStUvWxYz", price: 200000, lessons: []
+  };
+  assert.equal(isDriveCourseReady(drive), true);
+  assert.equal(isCourseContentReady(drive), false);
+  assert.equal(isCourseSaleReady(drive), true);
+  assert.equal(effectiveDeliveryMode(drive), "DRIVE");
+  assert.equal(isCourseSaleReady({ ...drive, driveFolderId: "" }), false);
+  assert.equal(courseDeliveryMode({ streamAvailable: true }), "STREAM");
+  assert.equal(courseDeliveryMode({ streamAvailable: false }), "NON-STREAM");
+  assert.equal(driveFolderId("https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz?usp=sharing"), "1AbCdEfGhIjKlMnOpQrStUvWxYz");
+  assert.equal(driveFolderId("https://evil.example/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz"), "");
+  assert.equal(googleEmail(" User@Example.COM "), "user@example.com");
+  assert.equal(googleEmail("not-an-email"), "");
+  assert.equal(googleEmail(".user@example.com"), "");
+  assert.equal(googleEmail("user..name@example.com"), "");
+  assert.equal(googleEmail("user\u202E@example.com"), "");
+  assert.equal(escapeDiscordMarkdown("a_b*`c|"), "a\\_b\\*\\`c\\|");
+  assert.equal(escapeDiscordMarkdown("[duyệt](https://evil.example)"), "\\[duyệt\\]\\(https://evil.example\\)");
 });
 
 test("catalog reloads only complete JSON and public output uses an allowlist", () => {
   const catalogPath = path.resolve(__dirname, "..", "content", "catalog.json");
+  const deliveryPath = path.resolve(__dirname, "..", "content", "delivery.private.json");
   const readFileSync = fs.readFileSync;
   const statSync = fs.statSync;
   let version = 1;
@@ -66,19 +89,22 @@ test("catalog reloads only complete JSON and public output uses an allowlist", (
     }],
     courses: [{
       id: "course-a", title: "Alpha", description: "test", price: 50000, planTier: "basic",
-      streamAvailable: true, saleEnabled: true,
+      deliveryMode: "STREAM", streamAvailable: true, saleEnabled: true,
       imageUrl: "  https://cdn.example.test/image.png  ", previewUrl: "https://cdn.example.test/preview.mp4",
       published: true, rightsVerified: true, forumVisible: true, internalPath: "hidden",
       lessons: [{ id: "lesson-1", title: "Lesson", duration: "10:00", published: true, mediaPath: "hidden" }]
     }]
   });
+  let deliverySource = JSON.stringify({ driveFolders: {} });
 
   fs.statSync = function (file, ...args) {
     if (path.resolve(String(file)) !== catalogPath) return statSync.call(this, file, ...args);
     return { size: Buffer.byteLength(source), mtimeMs: version };
   };
   fs.readFileSync = function (file, ...args) {
-    if (path.resolve(String(file)) !== catalogPath) return readFileSync.call(this, file, ...args);
+    const resolved = path.resolve(String(file));
+    if (resolved === deliveryPath) return args[0] ? deliverySource : Buffer.from(deliverySource);
+    if (resolved !== catalogPath) return readFileSync.call(this, file, ...args);
     const snapshot = Buffer.from(source);
     if (changeDuringRead) {
       version += 1;
@@ -93,6 +119,7 @@ test("catalog reloads only complete JSON and public output uses an allowlist", (
     assert.equal(exposed.discordUrl, "");
     assert.equal(exposed.courses[0].imageUrl, "https://cdn.example.test/image.png");
     assert.equal(exposed.courses[0].previewUrl, "https://cdn.example.test/preview.mp4");
+    assert.equal(exposed.courses[0].deliveryMode, "STREAM");
     assert.equal(exposed.courses[0].streamAvailable, true);
     assert.equal(exposed.courses[0].saleEnabled, true);
     assert.equal("internalPath" in exposed.courses[0], false);
@@ -101,13 +128,13 @@ test("catalog reloads only complete JSON and public output uses an allowlist", (
     assert.equal("adminNote" in exposed.plans[0], false);
     assert.equal("published" in exposed.plans[0], false);
 
-    source = source.replace('"streamAvailable":true', '"streamAvailable":false');
+    source = source.replace('"deliveryMode":"STREAM"', '"deliveryMode":"NON-STREAM"').replace('"streamAvailable":true', '"streamAvailable":false');
     version += 1;
     const nonStream = publicCatalog();
     assert.equal(nonStream.courses.length, 1);
     assert.equal(nonStream.courses[0].streamAvailable, false);
     assert.equal(nonStream.courses[0].saleEnabled, false);
-    source = source.replace('"streamAvailable":false', '"streamAvailable":true');
+    source = source.replace('"deliveryMode":"NON-STREAM"', '"deliveryMode":"STREAM"').replace('"streamAvailable":false', '"streamAvailable":true');
     version += 1;
 
     source = source.replace('"published":true,"mediaPath":"hidden"', '"published":false,"mediaPath":"hidden"');
@@ -116,6 +143,27 @@ test("catalog reloads only complete JSON and public output uses an allowlist", (
     assert.equal(noPublishedLesson.courses[0].streamAvailable, false);
     assert.equal(noPublishedLesson.courses[0].saleEnabled, false);
     source = source.replace('"published":false,"mediaPath":"hidden"', '"published":true,"mediaPath":"hidden"');
+    version += 1;
+
+    const driveCatalog = JSON.parse(source);
+    Object.assign(driveCatalog.courses[0], {
+      deliveryMode: "DRIVE", streamAvailable: false, lessons: []
+    });
+    deliverySource = JSON.stringify({ driveFolders: { "course-a": "1AbCdEfGhIjKlMnOpQrStUvWxYz" } });
+    source = JSON.stringify(driveCatalog);
+    version += 1;
+    const driveExposed = publicCatalog();
+    assert.equal(driveExposed.courses[0].deliveryMode, "DRIVE");
+    assert.equal(driveExposed.courses[0].saleEnabled, true);
+    assert.deepEqual(driveExposed.courses[0].lessons, []);
+    assert.equal("driveFolderId" in driveExposed.courses[0], false);
+
+    Object.assign(driveCatalog.courses[0], {
+      deliveryMode: "STREAM", streamAvailable: true,
+      lessons: [{ id: "lesson-1", title: "Lesson", duration: "10:00", published: true, mediaPath: "hidden" }]
+    });
+    deliverySource = JSON.stringify({ driveFolders: {} });
+    source = JSON.stringify(driveCatalog);
     version += 1;
 
     source = source.replace('"Alpha"', '"Bravo"');
@@ -134,7 +182,8 @@ test("catalog reloads only complete JSON and public output uses an allowlist", (
       plans: [],
       courses: [{
         id: "encoded-url", title: "URL", description: "", price: 0, planTier: "full",
-        published: true, forumVisible: true, rightsVerified: true, streamAvailable: true, saleEnabled: false,
+        published: true, forumVisible: true, rightsVerified: true, deliveryMode: "STREAM",
+        streamAvailable: true, saleEnabled: false,
         imageUrl: `https://example.test/${"á".repeat(900)}`, lessons: []
       }]
     });

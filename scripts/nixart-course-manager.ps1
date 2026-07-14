@@ -11,9 +11,12 @@ Add-Type -AssemblyName System.Drawing
 
 $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $script:CatalogPath = Join-Path $script:RepoRoot "content\catalog.json"
+$script:DeliveryPath = Join-Path $script:RepoRoot "content\delivery.private.json"
 $script:Utf8NoBom = New-Object Text.UTF8Encoding($false)
 $script:Catalog = $null
 $script:CatalogFingerprint = ""
+$script:Delivery = $null
+$script:DeliveryFingerprint = ""
 $script:EditingCourseId = ""
 $script:SyncRunning = $false
 $script:SyncProcess = $null
@@ -36,6 +39,35 @@ function Get-CatalogSnapshot {
   $file = Get-Item -LiteralPath $Path
   [pscustomobject]@{
     Catalog = $catalog
+    Fingerprint = "$($file.LastWriteTimeUtc.Ticks):$($bytes.Length):$hash"
+  }
+}
+
+function Get-DeliverySnapshot {
+  param([string]$Path = $script:DeliveryPath)
+
+  if (-not [IO.File]::Exists($Path)) {
+    return [pscustomobject]@{
+      Delivery = [pscustomobject][ordered]@{ driveFolders = [pscustomobject][ordered]@{} }
+      Fingerprint = "missing"
+    }
+  }
+  $bytes = [IO.File]::ReadAllBytes($Path)
+  $text = [Text.Encoding]::UTF8.GetString($bytes).TrimStart([char]0xFEFF)
+  try { $delivery = $text | ConvertFrom-Json } catch { throw "delivery.private.json không phải JSON hợp lệ: $($_.Exception.Message)" }
+  if ($null -eq $delivery -or $null -eq $delivery.PSObject.Properties["driveFolders"] -or $null -eq $delivery.driveFolders) {
+    throw "delivery.private.json thiếu object driveFolders."
+  }
+  foreach ($property in @($delivery.driveFolders.PSObject.Properties)) {
+    if ($property.Name -cnotmatch "^[a-z0-9][a-z0-9_-]{0,79}$" -or -not (Resolve-DriveFolderId ([string]$property.Value))) {
+      throw "delivery.private.json có course ID hoặc folder ID không hợp lệ: $($property.Name)"
+    }
+  }
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { $hash = [Convert]::ToBase64String($sha.ComputeHash($bytes)) } finally { $sha.Dispose() }
+  $file = Get-Item -LiteralPath $Path
+  [pscustomobject]@{
+    Delivery = $delivery
     Fingerprint = "$($file.LastWriteTimeUtc.Ticks):$($bytes.Length):$hash"
   }
 }
@@ -114,6 +146,62 @@ function Test-HttpsUrl {
     $uri.AbsoluteUri.Length -le $MaxLength
 }
 
+function Resolve-DriveFolderId {
+  param([string]$Value)
+
+  $value = $Value.Trim()
+  if (-not $value) { return "" }
+  if ($value -cmatch "^[A-Za-z0-9_-]{10,200}$") { return $value }
+
+  $uri = $null
+  if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri) -or
+      $uri.Scheme -cne "https" -or
+      $uri.Host -ine "drive.google.com" -or
+      $uri.UserInfo) {
+    return ""
+  }
+
+  $path = [Uri]::UnescapeDataString($uri.AbsolutePath).TrimEnd("/")
+  if ($path -match "^/drive(?:/u/\d+)?/folders/([A-Za-z0-9_-]{10,200})$") { return $matches[1] }
+  ""
+}
+
+function Get-CourseDeliveryMode {
+  param($Course)
+
+  $mode = [string]$Course.deliveryMode
+  if (@("DRIVE", "STREAM", "NON-STREAM") -contains $mode) { return $mode }
+  if (-not $mode -and $Course.streamAvailable -eq $true) { return "STREAM" }
+  "NON-STREAM"
+}
+
+function Get-PrivateDriveFolder {
+  param([string]$CourseId, $Delivery = $script:Delivery)
+
+  if ($null -eq $Delivery -or $null -eq $Delivery.driveFolders) { return "" }
+  $property = $Delivery.driveFolders.PSObject.Properties[$CourseId]
+  if ($null -eq $property) { return "" }
+  [string]$property.Value
+}
+
+function Set-PrivateDriveFolder {
+  param($Delivery, [string]$CourseId, [string]$FolderId)
+
+  if ($null -eq $Delivery.PSObject.Properties["driveFolders"] -or $null -eq $Delivery.driveFolders) {
+    Set-CourseProperty $Delivery "driveFolders" ([pscustomobject][ordered]@{})
+  }
+  $property = $Delivery.driveFolders.PSObject.Properties[$CourseId]
+  if ($FolderId) {
+    if ($null -eq $property) {
+      $Delivery.driveFolders | Add-Member -MemberType NoteProperty -Name $CourseId -Value $FolderId
+    } else {
+      $property.Value = $FolderId
+    }
+  } elseif ($null -ne $property) {
+    $Delivery.driveFolders.PSObject.Properties.Remove($CourseId)
+  }
+}
+
 function Get-CourseValidationError {
   param(
     [string]$Title,
@@ -123,8 +211,9 @@ function Get-CourseValidationError {
     [bool]$RightsVerified,
     [bool]$Published,
     [bool]$SaleEnabled,
-    [bool]$StreamAvailable,
+    [string]$DeliveryMode,
     [bool]$HasPublishedLesson,
+    [string]$DriveFolderValue,
     [string]$ImageUrl,
     [string]$PreviewUrl
   )
@@ -136,12 +225,14 @@ function Get-CourseValidationError {
   if ([regex]::IsMatch($Description, "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u202A-\u202E\u2066-\u2069]")) { return "Mô tả chứa ký tự điều khiển hoặc đổi hướng chữ không hợp lệ." }
   if ($Price -lt 0 -or $Price -ne [decimal]::Truncate($Price)) { return "Giá phải là số nguyên không âm." }
   if (@("basic", "full") -notcontains $PlanTier) { return "Gói phải là basic hoặc full." }
+  if (@("NON-STREAM", "DRIVE", "STREAM") -notcontains $DeliveryMode) { return "Hình thức giao nội dung không hợp lệ." }
   if ($Published -and -not $RightsVerified) { return "Muốn công khai trên web, bạn phải xác nhận quyền phân phối khóa học." }
   if ($SaleEnabled -and -not $Published) { return "Muốn mở thanh toán, khóa học phải được công khai trên web." }
   if ($SaleEnabled -and -not $RightsVerified) { return "Muốn mở thanh toán, bạn phải xác nhận quyền phân phối khóa học." }
-  if ($SaleEnabled -and -not $StreamAvailable) { return "Muốn mở thanh toán, hình thức học phải là STREAM để người mua xem được trên web." }
-  if ($SaleEnabled -and -not $HasPublishedLesson) { return "Muốn mở thanh toán, khóa học phải có ít nhất một bài HLS đã published." }
   if ($SaleEnabled -and $Price -le 0) { return "Muốn mở thanh toán, giá khóa học phải lớn hơn 0." }
+  if ($SaleEnabled -and $DeliveryMode -eq "NON-STREAM") { return "Khóa NON-STREAM chưa có cách giao nội dung nên không thể mở thanh toán." }
+  if ($SaleEnabled -and $DeliveryMode -eq "STREAM" -and -not $HasPublishedLesson) { return "Muốn mở thanh toán STREAM, khóa học phải có ít nhất một bài HLS đã published." }
+  if ($DeliveryMode -eq "DRIVE" -and -not (Resolve-DriveFolderId $DriveFolderValue)) { return "Khóa DRIVE cần folder ID hoặc URL thư mục drive.google.com hợp lệ." }
   if ($ImageUrl.Length -gt 2000 -or -not (Test-HttpsUrl $ImageUrl 2000)) { return "URL ảnh bìa phải là liên kết HTTPS hợp lệ (tối đa 2.000 ký tự)." }
   if ($PreviewUrl.Length -gt 512 -or -not (Test-HttpsUrl $PreviewUrl 512)) { return "Link preview phải là liên kết HTTPS hợp lệ (tối đa 512 ký tự)." }
   $null
@@ -162,10 +253,19 @@ function Invoke-SelfTest {
   $ids = @([pscustomobject]@{ id = "khoa-hoc" })
   if ((New-UniqueCourseId "Khóa học" $ids) -ne "khoa-hoc-2") { throw "Slug duy nhất thất bại" }
   if (-not (Test-HttpsUrl "https://example.com/cover.jpg") -or (Test-HttpsUrl "http://example.com")) { throw "Kiểm tra HTTPS thất bại" }
-  if (-not (Get-CourseValidationError "A" "" 100 "full" $false $true $false $false $false "" "")) { throw "Kiểm tra quyền công khai thất bại" }
-  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true $false $true "" "")) { throw "Kiểm tra STREAM thanh toán thất bại" }
-  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true $true $false "" "")) { throw "Kiểm tra bài HLS thanh toán thất bại" }
-  if (Get-CourseValidationError "A" "" 0 "full" $true $true $false $false $false "" "") { throw "Khóa NON-STREAM hợp lệ không thể công khai" }
+  $folderId = "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+  if ((Resolve-DriveFolderId "https://drive.google.com/drive/u/0/folders/${folderId}?usp=sharing") -ne $folderId) { throw "Chuẩn hóa URL Drive thất bại" }
+  if ((Resolve-DriveFolderId $folderId) -ne $folderId -or (Resolve-DriveFolderId "https://example.com/drive/folders/$folderId")) { throw "Kiểm tra folder Drive thất bại" }
+  if ((Get-CourseDeliveryMode ([pscustomobject]@{ streamAvailable = $true })) -ne "STREAM") { throw "Tương thích streamAvailable thất bại" }
+  if ((Get-CourseDeliveryMode ([pscustomobject]@{ deliveryMode = "DRIVE"; streamAvailable = $false })) -ne "DRIVE") { throw "deliveryMode không được ưu tiên" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $false $true $false "NON-STREAM" $false "" "" "")) { throw "Kiểm tra quyền công khai thất bại" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "NON-STREAM" $false "" "" "")) { throw "Kiểm tra thanh toán NON-STREAM thất bại" }
+  if (Get-CourseValidationError "A" "" 100 "full" $true $true $false "STREAM" $false "" "" "") { throw "Draft STREAM không thể lưu" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $false "" "" "")) { throw "Kiểm tra bài HLS STREAM thanh toán thất bại" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $false "DRIVE" $false "invalid" "" "")) { throw "Kiểm tra thư mục DRIVE thất bại" }
+  if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "DRIVE" $false $folderId "" "") { throw "Khóa DRIVE hợp lệ không thể mở bán" }
+  if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "") { throw "Khóa STREAM hợp lệ không thể mở bán" }
+  if (Get-CourseValidationError "A" "" 0 "full" $true $true $false "NON-STREAM" $false "" "" "") { throw "Khóa NON-STREAM hợp lệ không thể công khai" }
 
   $directory = Join-Path ([IO.Path]::GetTempPath()) ("nixart-manager-{0}" -f [Guid]::NewGuid().ToString("N"))
   [IO.Directory]::CreateDirectory($directory) | Out-Null
@@ -186,6 +286,12 @@ function Invoke-SelfTest {
     Save-CatalogAtomically $third $path
     if ((Get-CatalogSnapshot $path).Catalog.unknown.keep -ne "third") { throw "Không ghi đè atomic lần hai" }
     if ((Get-CatalogSnapshot "$path.manager-backup").Catalog.unknown.keep -ne "updated") { throw "Backup lần hai không hợp lệ" }
+    $deliveryPath = Join-Path $directory "delivery.private.json"
+    $delivery = [pscustomobject][ordered]@{ driveFolders = [pscustomobject][ordered]@{} }
+    Set-PrivateDriveFolder $delivery "khoa-hoc" $folderId
+    Save-CatalogAtomically $delivery $deliveryPath
+    $deliveryRoundTrip = Get-DeliverySnapshot $deliveryPath
+    if ((Get-PrivateDriveFolder "khoa-hoc" $deliveryRoundTrip.Delivery) -ne $folderId) { throw "Không lưu được cấu hình Drive riêng tư" }
   } finally {
     if ([IO.Directory]::Exists($directory)) { [IO.Directory]::Delete($directory, $true) }
   }
@@ -329,7 +435,7 @@ foreach ($columnInfo in @(
   @{ Name = "Tên khóa học"; Width = 260 },
   @{ Name = "Giá"; Width = 95 },
   @{ Name = "Gói"; Width = 65 },
-  @{ Name = "Hình thức"; Width = 115 },
+  @{ Name = "Cấu hình"; Width = 115 },
   @{ Name = "Quyền"; Width = 70 },
   @{ Name = "Web"; Width = 60 },
   @{ Name = "Mở bán"; Width = 75 }
@@ -344,7 +450,7 @@ foreach ($columnInfo in @(
 $editor = New-Object Windows.Forms.GroupBox
 $editor.Text = "  Thông tin khóa học  "
 $editor.Dock = "Top"
-$editor.Height = 550
+$editor.Height = 610
 $editor.Padding = New-Object Windows.Forms.Padding(16)
 $editor.ForeColor = $text
 $split.Panel2.AutoScroll = $true
@@ -431,41 +537,50 @@ $planBox.SelectedItem = "full"
 $editor.Controls.Add($planBox)
 
 Add-EditorLabel "Hình thức học" 366
-$streamBox = New-Object Windows.Forms.ComboBox
-$streamBox.Location = New-Object Drawing.Point(18, 386)
-$streamBox.Size = New-Object Drawing.Size(430, 28)
-$streamBox.Anchor = "Top, Left, Right"
-$streamBox.DropDownStyle = "DropDownList"
-$streamBox.BackColor = $surface
-$streamBox.ForeColor = $text
-[void]$streamBox.Items.AddRange(@(
-  "NON-STREAM — chưa học trên web",
-  "Bật STREAM — chỉ hiện khi có bài HLS published"
+$deliveryBox = New-Object Windows.Forms.ComboBox
+$deliveryBox.Location = New-Object Drawing.Point(18, 386)
+$deliveryBox.Size = New-Object Drawing.Size(430, 28)
+$deliveryBox.Anchor = "Top, Left, Right"
+$deliveryBox.DropDownStyle = "DropDownList"
+$deliveryBox.BackColor = $surface
+$deliveryBox.ForeColor = $text
+[void]$deliveryBox.Items.AddRange(@(
+  "NON-STREAM — chưa có cách giao nội dung",
+  "DRIVE — thêm email vào thư mục Google Drive",
+  "STREAM — học trực tiếp trên web"
 ))
-$streamBox.SelectedIndex = 0
-$editor.Controls.Add($streamBox)
+$deliveryBox.SelectedIndex = 0
+$editor.Controls.Add($deliveryBox)
+
+Add-EditorLabel "Google Drive folder ID hoặc URL thư mục" 422
+$driveFolderBox = New-EditorTextBox 442
+$driveFolderBox.MaxLength = 2000
+$driveFolderBox.Enabled = $false
+$deliveryBox.Add_SelectedIndexChanged({
+  $driveFolderBox.Enabled = $deliveryBox.SelectedIndex -eq 1
+})
 
 $rightsBox = New-Object Windows.Forms.CheckBox
 $rightsBox.Text = "Tôi xác nhận có quyền phân phối khóa học"
 $rightsBox.AutoSize = $true
-$rightsBox.Location = New-Object Drawing.Point(18, 422)
+$rightsBox.Location = New-Object Drawing.Point(18, 480)
 $editor.Controls.Add($rightsBox)
 
 $publishedBox = New-Object Windows.Forms.CheckBox
 $publishedBox.Text = "Công khai khóa học trên web"
 $publishedBox.AutoSize = $true
-$publishedBox.Location = New-Object Drawing.Point(18, 447)
+$publishedBox.Location = New-Object Drawing.Point(18, 505)
 $editor.Controls.Add($publishedBox)
 
 $saleBox = New-Object Windows.Forms.CheckBox
-$saleBox.Text = "Mở thanh toán (cần STREAM + ít nhất 1 bài HLS)"
+$saleBox.Text = "Mở thanh toán (cần DRIVE hợp lệ hoặc STREAM có bài)"
 $saleBox.AutoSize = $true
-$saleBox.Location = New-Object Drawing.Point(18, 472)
+$saleBox.Location = New-Object Drawing.Point(18, 530)
 $editor.Controls.Add($saleBox)
 
 $saveButton = New-Object Windows.Forms.Button
 $saveButton.Text = "THÊM KHÓA HỌC"
-$saveButton.Location = New-Object Drawing.Point(18, 504)
+$saveButton.Location = New-Object Drawing.Point(18, 564)
 $saveButton.Size = New-Object Drawing.Size(205, 40)
 $saveButton.FlatStyle = "Flat"
 $saveButton.BackColor = $accent
@@ -478,7 +593,7 @@ $saveNote = New-Object Windows.Forms.Label
 $saveNote.Text = "Lưu không tự đăng Discord."
 $saveNote.ForeColor = $muted
 $saveNote.AutoSize = $true
-$saveNote.Location = New-Object Drawing.Point(238, 516)
+$saveNote.Location = New-Object Drawing.Point(238, 576)
 $editor.Controls.Add($saveNote)
 
 function Write-Log {
@@ -496,7 +611,8 @@ function Clear-Editor {
   $previewUrlBox.Clear()
   $priceBox.Value = 0
   $planBox.SelectedItem = "full"
-  $streamBox.SelectedIndex = 0
+  $deliveryBox.SelectedIndex = 0
+  $driveFolderBox.Clear()
   $rightsBox.Checked = $false
   $publishedBox.Checked = $false
   $saleBox.Checked = $false
@@ -510,19 +626,28 @@ function Refresh-CourseList {
   param([string]$SelectId = "")
 
   $snapshot = Get-CatalogSnapshot
+  $deliverySnapshot = Get-DeliverySnapshot
   $script:Catalog = $snapshot.Catalog
   $script:CatalogFingerprint = $snapshot.Fingerprint
+  $script:Delivery = $deliverySnapshot.Delivery
+  $script:DeliveryFingerprint = $deliverySnapshot.Fingerprint
   $courseGrid.Rows.Clear()
   foreach ($course in @($script:Catalog.courses)) {
     $price = if ([decimal]$course.price -gt 0) { "{0:N0}đ" -f [decimal]$course.price } else { "—" }
     $hasPublishedLesson = @($course.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
+    $deliveryMode = Get-CourseDeliveryMode $course
+    $deliveryReady = switch ($deliveryMode) {
+      "DRIVE" { [bool](Resolve-DriveFolderId (Get-PrivateDriveFolder ([string]$course.id))) }
+      "STREAM" { $hasPublishedLesson }
+      default { $false }
+    }
     $saleReady = $course.forumVisible -eq $true -and $course.published -eq $true -and $course.saleEnabled -eq $true -and $course.rightsVerified -eq $true -and
-      $course.streamAvailable -eq $true -and [decimal]$course.price -gt 0 -and $hasPublishedLesson
+      [decimal]$course.price -gt 0 -and $deliveryReady
     $rowIndex = $courseGrid.Rows.Add(
       [string]$course.title,
       $price,
       [string]$course.planTier,
-      $(if ($course.published -eq $true -and $course.rightsVerified -eq $true -and $course.streamAvailable -eq $true -and $hasPublishedLesson) { "STREAM" } else { "NON-STREAM" }),
+      $deliveryMode,
       $(if ($course.rightsVerified -eq $true) { "Có" } else { "Chưa" }),
       $(if ($course.published -eq $true) { "Có" } else { "Chưa" }),
       $(if ($saleReady) { "Có" } else { "Chưa" })
@@ -556,7 +681,9 @@ function Load-CourseIntoEditor {
   if ($price -gt $priceBox.Maximum) { $price = $priceBox.Maximum }
   $priceBox.Value = $price
   $planBox.SelectedItem = if (@("basic", "full") -contains [string]$course.planTier) { [string]$course.planTier } else { "full" }
-  $streamBox.SelectedIndex = if ($course.streamAvailable -eq $true) { 1 } else { 0 }
+  $deliveryMode = Get-CourseDeliveryMode $course
+  $deliveryBox.SelectedIndex = switch ($deliveryMode) { "DRIVE" { 1 } "STREAM" { 2 } default { 0 } }
+  $driveFolderBox.Text = Get-PrivateDriveFolder ([string]$course.id)
   $rightsBox.Checked = $course.rightsVerified -eq $true
   $publishedBox.Checked = $course.published -eq $true
   $saleBox.Checked = $course.saleEnabled -eq $true
@@ -579,26 +706,30 @@ $saveButton.Add_Click({
     $previewUrl = $previewUrlBox.Text.Trim()
     $price = [decimal]$priceBox.Value
     $planTier = [string]$planBox.SelectedItem
-    $streamAvailable = $streamBox.SelectedIndex -eq 1
+    $deliveryMode = switch ($deliveryBox.SelectedIndex) { 1 { "DRIVE" } 2 { "STREAM" } default { "NON-STREAM" } }
+    $driveFolderValue = $driveFolderBox.Text.Trim()
+    $driveFolderId = if ($deliveryMode -eq "DRIVE") { Resolve-DriveFolderId $driveFolderValue } else { "" }
     $editingCourse = if ($script:EditingCourseId) {
       @($script:Catalog.courses) | Where-Object { [string]$_.id -eq $script:EditingCourseId } | Select-Object -First 1
     } else { $null }
     $hasPublishedLesson = $null -ne $editingCourse -and @($editingCourse.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
-    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $streamAvailable $hasPublishedLesson $imageUrl $previewUrl
+    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $deliveryMode $hasPublishedLesson $driveFolderValue $imageUrl $previewUrl
     if ($errorMessage) {
       [Windows.Forms.MessageBox]::Show($errorMessage, "Dữ liệu chưa hợp lệ", "OK", "Warning") | Out-Null
       return
     }
 
     $current = Get-CatalogSnapshot
-    if ($current.Fingerprint -ne $script:CatalogFingerprint) {
+    $currentDelivery = Get-DeliverySnapshot
+    if ($current.Fingerprint -ne $script:CatalogFingerprint -or $currentDelivery.Fingerprint -ne $script:DeliveryFingerprint) {
       Refresh-CourseList
       Clear-Editor
-      [Windows.Forms.MessageBox]::Show("catalog.json vừa được thay đổi ở nơi khác. Danh sách đã tải lại; hãy nhập lại để tránh ghi đè dữ liệu.", "Catalog đã thay đổi", "OK", "Warning") | Out-Null
+      [Windows.Forms.MessageBox]::Show("Catalog hoặc cấu hình Drive vừa được thay đổi ở nơi khác. Danh sách đã tải lại; hãy nhập lại để tránh ghi đè dữ liệu.", "Dữ liệu đã thay đổi", "OK", "Warning") | Out-Null
       return
     }
 
     $workingCatalog = $current.Catalog
+    $workingDelivery = $currentDelivery.Delivery
     $courses = @($workingCatalog.courses)
     if ($script:EditingCourseId) {
       $course = $courses | Where-Object { [string]$_.id -eq $script:EditingCourseId } | Select-Object -First 1
@@ -614,6 +745,7 @@ $saveButton.Add_Click({
         previewUrl = $previewUrl
         price = [long]$price
         planTier = $planTier
+        deliveryMode = "NON-STREAM"
         streamAvailable = $false
         saleEnabled = $false
         published = $false
@@ -630,13 +762,23 @@ $saveButton.Add_Click({
     Set-CourseProperty $course "previewUrl" $previewUrl
     Set-CourseProperty $course "price" ([long]$price)
     Set-CourseProperty $course "planTier" $planTier
-    Set-CourseProperty $course "streamAvailable" ([bool]$streamAvailable)
+    Set-CourseProperty $course "deliveryMode" $deliveryMode
+    Set-CourseProperty $course "streamAvailable" ($deliveryMode -eq "STREAM")
     Set-CourseProperty $course "saleEnabled" ([bool]$saleBox.Checked)
     Set-CourseProperty $course "forumVisible" $true
     Set-CourseProperty $course "rightsVerified" ([bool]$rightsBox.Checked)
     Set-CourseProperty $course "published" ([bool]$publishedBox.Checked)
 
+    Set-PrivateDriveFolder $workingDelivery $courseId $driveFolderId
+    foreach ($catalogCourse in @($workingCatalog.courses)) {
+      if ($null -ne $catalogCourse.PSObject.Properties["driveFolderId"]) {
+        $catalogCourse.PSObject.Properties.Remove("driveFolderId")
+      }
+    }
+    # Publish the mode first. If the private write then fails, a new DRIVE course stays fail-closed
+    # and an existing DRIVE course keeps its previous folder instead of switching content early.
     Save-CatalogAtomically $workingCatalog
+    Save-CatalogAtomically $workingDelivery $script:DeliveryPath
     Refresh-CourseList $courseId
     Load-CourseIntoEditor $courseId
     $statusLabel.Text = "Đã cập nhật catalog trên web; chưa đăng Discord."
@@ -748,6 +890,8 @@ try {
     $priceLabel = $editor.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "Giá bán (VNĐ)" } | Select-Object -First 1
     $planLabel = $editor.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "Thuộc gói" } | Select-Object -First 1
     if ($priceLabel.Bounds.IntersectsWith($planLabel.Bounds)) { throw "Nhãn Giá bán và Thuộc gói đang chồng nhau." }
+    if ($deliveryBox.Items.Count -ne 3) { throw "Danh sách hình thức học phải có NON-STREAM, DRIVE và STREAM." }
+    if ($driveFolderBox.Top -lt $deliveryBox.Bottom) { throw "Ô thư mục Drive đang chồng lên danh sách hình thức học." }
     if ($saveButton.Bottom -gt $editor.ClientSize.Height) { throw "Nút lưu nằm ngoài khung nhập khóa học." }
     Write-Host ("LAYOUT-TEST OK form={0}x{1} content={2} editor={3}px log={4}" -f $form.ClientSize.Width, $form.ClientSize.Height, $split.Bounds, $split.Panel2.ClientSize.Width, $outputGroup.Bounds)
     $form.Close()

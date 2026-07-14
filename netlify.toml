@@ -6,6 +6,13 @@
   node_bundler = "esbuild"
   included_files = ["content/catalog.json"]
 
+# Không cho static host phục vụ catalog hoặc cấu hình nội bộ từ publish root.
+[[redirects]]
+  from = "/content/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
 # Goi /api/state se chay function state.js
 [[redirects]]
   from = "/api/state"
