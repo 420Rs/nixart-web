@@ -4,75 +4,308 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <meta name="theme-color" content="#111116">
+  <meta name="theme-color" content="#0a0a0b">
   <title>Phòng học — Nixart</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
     :root {
       color-scheme: dark;
-      --ink: #f5f5f7;
-      --muted: #a4a3ad;
-      --bg: #111116;
-      --panel: #1a1a21;
-      --line: #30303a;
-      --accent: #7781ff;
-      --lime: #d8ff63;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ink: #f4f4f5;
+      --muted: #a1a1aa;
+      --quiet: #9a9aa3;
+      --bg: #0a0a0b;
+      --panel: #141416;
+      --panel-deep: #0f0f11;
+      --line: #2a2a2e;
+      --line-strong: #3f3f46;
+      --success: #74d99f;
+      --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-display: "Inter Tight", Inter, ui-sans-serif, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-family: var(--font-sans);
     }
 
     * { box-sizing: border-box; }
-    body { min-height: 100vh; margin: 0; color: var(--ink); background: radial-gradient(circle at 90% 0, rgba(88,101,242,.13), transparent 32rem), var(--bg); }
+    html { background: var(--bg); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    body::before,
+    body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+    body::before {
+      opacity: .28;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      -webkit-mask-image: linear-gradient(to bottom, #000, transparent 78%);
+      mask-image: linear-gradient(to bottom, #000, transparent 78%);
+    }
+    body::after {
+      background:
+        radial-gradient(circle at 76% -12%, rgba(255,255,255,.07), transparent 33rem),
+        radial-gradient(circle at 12% 45%, rgba(255,255,255,.025), transparent 28rem);
+    }
     button, a { font: inherit; -webkit-tap-highlight-color: transparent; }
-    .shell { width: min(1280px, calc(100% - 40px)); margin-inline: auto; }
-    header { border-bottom: 1px solid var(--line); }
-    nav { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-    .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
-    .brand-mark { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 10px; color: #15151a; background: var(--lime); font-size: .75rem; transform: rotate(-4deg); }
-    .account { display: none; align-items: center; gap: 12px; color: var(--muted); font-size: .78rem; }
+    button, a, video { outline-offset: 4px; }
+    button:focus-visible, a:focus-visible, video:focus-visible { outline: 2px solid var(--ink); }
+    .shell { width: min(1180px, calc(100% - 40px)); margin-inline: auto; }
+
+    header {
+      position: relative;
+      z-index: 2;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10,10,11,.78);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      animation: reveal .5s cubic-bezier(.22,1,.36,1) both;
+    }
+    nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--ink);
+      font-family: var(--font-display);
+      font-size: .9rem;
+      font-weight: 800;
+      letter-spacing: -.025em;
+      text-decoration: none;
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      color: #0a0a0b;
+      background: var(--ink);
+      font-family: var(--font-mono);
+      font-size: .67rem;
+      font-weight: 800;
+      letter-spacing: -.04em;
+    }
+    .account {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      color: var(--quiet);
+      font-family: var(--font-mono);
+      font-size: .68rem;
+      letter-spacing: .035em;
+    }
     .account.visible { display: flex; }
-    .account strong { max-width: 210px; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
-    .logout { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; cursor: pointer; }
-    .logout:hover { color: var(--ink); border-color: #50505c; }
+    .account strong {
+      max-width: 210px;
+      overflow: hidden;
+      color: var(--muted);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .logout {
+      min-height: 36px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--muted);
+      background: rgba(20,20,22,.65);
+      cursor: pointer;
+      transition: color .2s ease, border-color .2s ease, background .2s ease;
+    }
+    .logout:hover { color: var(--ink); border-color: var(--line-strong); background: var(--panel); }
 
-    main { padding: 45px 0 70px; }
-    .lesson-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
-    .breadcrumb { margin: 0 0 9px; color: var(--accent); font-size: .72rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 3rem); line-height: 1.05; letter-spacing: -.05em; }
-    .secure { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; }
-    .secure::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #55d98a; box-shadow: 0 0 0 4px rgba(85,217,138,.1); }
+    main { position: relative; z-index: 1; padding: 52px 0 76px; }
+    .lesson-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      animation: reveal .58s .04s cubic-bezier(.22,1,.36,1) both;
+    }
+    .breadcrumb {
+      margin: 0 0 11px;
+      color: var(--quiet);
+      font-family: var(--font-mono);
+      font-size: .66rem;
+      font-weight: 600;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 840px;
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(1.85rem, 4.5vw, 3.4rem);
+      font-weight: 650;
+      line-height: 1.02;
+      letter-spacing: -.052em;
+      text-wrap: balance;
+    }
+    .secure {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--quiet);
+      font-family: var(--font-mono);
+      font-size: .65rem;
+      letter-spacing: .055em;
+      text-transform: uppercase;
+    }
+    .secure::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(116,217,159,.22);
+      animation: pulse 2.8s ease-in-out infinite;
+    }
 
-    .theater { overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: #08080b; box-shadow: 0 28px 80px rgba(0,0,0,.3); }
-    .video-wrap { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; background: radial-gradient(circle, #20202a, #09090c 70%); }
+    .theater {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-deep);
+      box-shadow: 0 24px 64px rgba(0,0,0,.28);
+      animation: reveal .62s .1s cubic-bezier(.22,1,.36,1) both;
+    }
+    .video-wrap {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(255,255,255,.045), transparent 36%),
+        #09090a;
+    }
     video { width: 100%; height: 100%; display: none; background: #000; object-fit: contain; }
-    video.ready { display: block; }
-    .state { max-width: 520px; padding: 32px; text-align: center; }
+    video.ready { display: block; animation: video-reveal .35s ease-out both; }
+    .state { max-width: 540px; padding: 36px; text-align: center; }
     .state[hidden] { display: none; }
-    .spinner { width: 42px; height: 42px; margin: 0 auto 21px; border: 3px solid #34343e; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-    .state-icon { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 16px; color: var(--accent); background: var(--panel); font-size: 1.45rem; font-weight: 900; }
-    .state h2 { margin: 0 0 10px; font-size: 1.35rem; letter-spacing: -.03em; }
-    .state p { margin: 0 0 23px; color: var(--muted); font-size: .9rem; }
-    .button { min-height: 45px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border: 0; border-radius: 999px; color: white; background: #5865f2; font-weight: 850; text-decoration: none; cursor: pointer; }
-    .button.secondary { margin-left: 8px; border: 1px solid var(--line); color: var(--ink); background: transparent; }
-    .video-meta { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 18px 22px; border-top: 1px solid var(--line); color: var(--muted); background: var(--panel); font-size: .79rem; }
+    .spinner {
+      width: 38px;
+      height: 38px;
+      margin: 0 auto 22px;
+      border: 2px solid var(--line);
+      border-top-color: var(--ink);
+      border-radius: 50%;
+      animation: spin .85s linear infinite;
+    }
+    .state-icon {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 20px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--ink);
+      background: var(--panel);
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .state h2 {
+      margin: 0 0 11px;
+      font-family: var(--font-display);
+      font-size: clamp(1.25rem, 3vw, 1.55rem);
+      font-weight: 650;
+      letter-spacing: -.035em;
+    }
+    .state p { max-width: 450px; margin: 0 auto 24px; color: var(--muted); font-size: .88rem; line-height: 1.65; }
+    .button {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 17px;
+      border: 1px solid var(--ink);
+      border-radius: 10px;
+      color: #0a0a0b;
+      background: var(--ink);
+      font-size: .82rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .2s ease, background .2s ease, border-color .2s ease;
+    }
+    .button:hover { transform: translateY(-1px); background: #fff; border-color: #fff; }
+    .button.secondary { margin-left: 8px; border-color: var(--line); color: var(--muted); background: transparent; }
+    .button.secondary:hover { color: var(--ink); border-color: var(--line-strong); background: var(--panel); }
+    .video-meta {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 25px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--line);
+      color: var(--quiet);
+      background: var(--panel);
+      font-family: var(--font-mono);
+      font-size: .65rem;
+      letter-spacing: .025em;
+    }
     .video-meta p { margin: 0; }
-    .video-meta strong { color: var(--ink); }
-    .help { color: var(--muted); }
+    .video-meta strong { color: var(--muted); font-weight: 600; }
+    .help { color: var(--quiet); text-underline-offset: 3px; transition: color .2s ease; }
     .help:hover { color: var(--ink); }
-    .privacy { max-width: 720px; margin: 22px auto 0; color: #777680; font-size: .72rem; text-align: center; }
+    .privacy {
+      max-width: 720px;
+      margin: 22px auto 0;
+      color: var(--quiet);
+      font-family: var(--font-mono);
+      font-size: .68rem;
+      line-height: 1.65;
+      text-align: center;
+      animation: reveal .6s .16s cubic-bezier(.22,1,.36,1) both;
+    }
 
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 660px) {
-      .shell { width: min(100% - 24px, 1280px); }
-      nav { min-height: 62px; }
-      .account > span, .account strong { display: none; }
-      main { padding-top: 30px; }
-      .lesson-head { align-items: start; flex-direction: column; }
-      .theater { border-radius: 16px; }
-      .video-wrap { min-height: 245px; aspect-ratio: auto; }
-      .video-meta { align-items: start; flex-direction: column; gap: 8px; }
-      .state { padding: 25px 18px; }
+    @keyframes reveal {
+      from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
     }
-    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+    @keyframes video-reveal {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(116,217,159,.18); }
+      50% { box-shadow: 0 0 0 5px rgba(116,217,159,0); }
+    }
+
+    @media (max-width: 660px) {
+      .shell { width: min(100% - 24px, 1180px); }
+      nav { min-height: 64px; }
+      .account > span, .account strong { display: none; }
+      main { padding: 34px 0 52px; }
+      .lesson-head { align-items: start; flex-direction: column; gap: 17px; margin-bottom: 20px; }
+      .video-wrap { min-height: 245px; aspect-ratio: auto; }
+      .video-meta { min-height: 0; align-items: start; flex-direction: column; gap: 9px; padding: 15px 16px; }
+      .state { padding: 28px 18px; }
+      .button { width: 100%; }
+      .button.secondary { margin: 9px 0 0; }
+      .privacy { margin-top: 18px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+      .spinner { animation: none !important; }
+    }
   </style>
 </head>
 <body>
