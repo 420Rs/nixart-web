@@ -1,0 +1,38 @@
+{
+  "name": "NIXART",
+  "tagline": "Học trực tiếp trên web, cộng đồng và thanh toán tại Discord.",
+  "discordUrl": "https://discord.gg/B8ZXSNdVaR",
+  "plans": [
+    {
+      "id": "basic",
+      "title": "Gói Cơ Bản",
+      "price": 200000,
+      "durationDays": 30,
+      "description": "Truy cập các khóa học được đánh dấu Cơ Bản trong 30 ngày.",
+      "features": ["Học trực tiếp trên web", "Gia hạn cộng dồn thời gian", "Hỗ trợ trong Discord"],
+      "published": false
+    },
+    {
+      "id": "full",
+      "title": "Gói Full",
+      "price": 500000,
+      "durationDays": 30,
+      "description": "Truy cập toàn bộ khóa học đang phát hành trong 30 ngày.",
+      "features": ["Toàn bộ thư viện khóa học", "Bài học mới trong thời hạn gói", "Hỗ trợ ưu tiên trong Discord"],
+      "published": false
+    }
+  ],
+  "courses": [
+    {
+      "id": "khoa-hoc-mau",
+      "title": "Khóa học mẫu — hãy thay nội dung này",
+      "description": "Đổi tên, giá và danh sách bài trước khi bật published.",
+      "price": 0,
+      "planTier": "basic",
+      "published": false,
+      "lessons": [
+        { "id": "bai-01", "title": "Bài 01", "published": true }
+      ]
+    }
+  ]
+}

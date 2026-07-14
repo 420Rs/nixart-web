@@ -1,13 +1,21 @@
 {
   "name": "nixart-web",
   "version": "1.0.0",
-  "description": "VOICE STUDIO - bang theo doi tien do long tieng",
+  "description": "Nixart Discord commerce and self-hosted HLS learning",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@neondatabase/serverless": "0.10.4",
+    "discord.js": "14.26.5",
     "googleapis": "^173.0.0"
+  },
+  "overrides": {
+    "undici": "6.27.0"
   }
 }

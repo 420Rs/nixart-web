@@ -15,5 +15,9 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      - key: SEPAY_API_KEY
+        sync: false
+      - key: DISCORD_INVITE_URL
+        sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false

@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#111116">
+  <title>Phòng học — Nixart</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f5f5f7;
+      --muted: #a4a3ad;
+      --bg: #111116;
+      --panel: #1a1a21;
+      --line: #30303a;
+      --accent: #7781ff;
+      --lime: #d8ff63;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; color: var(--ink); background: radial-gradient(circle at 90% 0, rgba(88,101,242,.13), transparent 32rem), var(--bg); }
+    button, a { font: inherit; -webkit-tap-highlight-color: transparent; }
+    .shell { width: min(1280px, calc(100% - 40px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--line); }
+    nav { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
+    .brand-mark { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 10px; color: #15151a; background: var(--lime); font-size: .75rem; transform: rotate(-4deg); }
+    .account { display: none; align-items: center; gap: 12px; color: var(--muted); font-size: .78rem; }
+    .account.visible { display: flex; }
+    .account strong { max-width: 210px; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+    .logout { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; cursor: pointer; }
+    .logout:hover { color: var(--ink); border-color: #50505c; }
+
+    main { padding: 45px 0 70px; }
+    .lesson-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .breadcrumb { margin: 0 0 9px; color: var(--accent); font-size: .72rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 3rem); line-height: 1.05; letter-spacing: -.05em; }
+    .secure { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; }
+    .secure::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #55d98a; box-shadow: 0 0 0 4px rgba(85,217,138,.1); }
+
+    .theater { overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: #08080b; box-shadow: 0 28px 80px rgba(0,0,0,.3); }
+    .video-wrap { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; background: radial-gradient(circle, #20202a, #09090c 70%); }
+    video { width: 100%; height: 100%; display: none; background: #000; object-fit: contain; }
+    video.ready { display: block; }
+    .state { max-width: 520px; padding: 32px; text-align: center; }
+    .state[hidden] { display: none; }
+    .spinner { width: 42px; height: 42px; margin: 0 auto 21px; border: 3px solid #34343e; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    .state-icon { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 16px; color: var(--accent); background: var(--panel); font-size: 1.45rem; font-weight: 900; }
+    .state h2 { margin: 0 0 10px; font-size: 1.35rem; letter-spacing: -.03em; }
+    .state p { margin: 0 0 23px; color: var(--muted); font-size: .9rem; }
+    .button { min-height: 45px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border: 0; border-radius: 999px; color: white; background: #5865f2; font-weight: 850; text-decoration: none; cursor: pointer; }
+    .button.secondary { margin-left: 8px; border: 1px solid var(--line); color: var(--ink); background: transparent; }
+    .video-meta { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 18px 22px; border-top: 1px solid var(--line); color: var(--muted); background: var(--panel); font-size: .79rem; }
+    .video-meta p { margin: 0; }
+    .video-meta strong { color: var(--ink); }
+    .help { color: var(--muted); }
+    .help:hover { color: var(--ink); }
+    .privacy { max-width: 720px; margin: 22px auto 0; color: #777680; font-size: .72rem; text-align: center; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 660px) {
+      .shell { width: min(100% - 24px, 1280px); }
+      nav { min-height: 62px; }
+      .account > span, .account strong { display: none; }
+      main { padding-top: 30px; }
+      .lesson-head { align-items: start; flex-direction: column; }
+      .theater { border-radius: 16px; }
+      .video-wrap { min-height: 245px; aspect-ratio: auto; }
+      .video-meta { align-items: start; flex-direction: column; gap: 8px; }
+      .state { padding: 25px 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="shell">
+      <a class="brand" href="/" aria-label="Nixart, về trang chủ"><span class="brand-mark">NX</span><span>NIXART</span></a>
+      <div class="account" id="account"><span>Đang học với</span><strong id="user-name"></strong><button class="logout" id="logout" type="button">Đăng xuất</button></div>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <div class="lesson-head">
+      <div><p class="breadcrumb" id="course-name">Phòng học Nixart</p><h1 id="lesson-name">Đang chuẩn bị bài học…</h1></div>
+      <div class="secure">Phiên xem được bảo vệ</div>
+    </div>
+
+    <div class="theater">
+      <div class="video-wrap">
+        <div class="state" id="loading" role="status"><div class="spinner" aria-hidden="true"></div><h2>Đang kiểm tra quyền học</h2><p>Chỉ mất một chút thời gian.</p></div>
+        <div class="state" id="login" hidden><div class="state-icon">#</div><h2>Đăng nhập bằng Discord</h2><p>Dùng tài khoản Discord đã mua khóa hoặc kích hoạt gói tháng để tiếp tục.</p><a class="button" id="login-link" href="/api/discord-auth">Tiếp tục với Discord</a></div>
+        <div class="state" id="error" hidden><div class="state-icon">!</div><h2 id="error-title">Không thể mở bài học</h2><p id="error-message">Hãy thử lại hoặc kiểm tra quyền học trong Discord.</p><button class="button" id="retry" type="button">Thử lại</button><a class="button secondary" href="/">Về trang chủ</a></div>
+        <video id="video" controls playsinline preload="metadata" crossorigin="use-credentials" controlslist="nodownload" disablepictureinpicture aria-label="Trình phát bài học"></video>
+      </div>
+      <div class="video-meta"><p><strong id="meta-title">Nixart</strong> · Phát trực tuyến HLS</p><a class="help" href="/" target="_blank">Cần trợ giúp?</a></div>
+    </div>
+    <p class="privacy">Liên kết bài học gắn với quyền truy cập của tài khoản. Không chia sẻ tài khoản hoặc nội dung ra bên ngoài.</p>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const courseId = params.get("course")?.trim();
+    const lessonId = params.get("lesson")?.trim();
+    const currentRelativeUrl = location.pathname + location.search;
+    let hls;
+
+    const states = ["loading", "login", "error"];
+    function showState(id) {
+      states.forEach(name => document.querySelector(`#${name}`).hidden = name !== id);
+      document.querySelector("#video").classList.remove("ready");
+    }
+
+    function label(value, fallback) {
+      if (typeof value === "string") return value;
+      return value?.name || value?.title || fallback;
+    }
+
+    function showError(title, message) {
+      document.querySelector("#error-title").textContent = title;
+      document.querySelector("#error-message").textContent = message;
+      showState("error");
+    }
+
+    function showLogin() {
+      document.querySelector("#login-link").href = "/api/discord-auth?returnTo=" + encodeURIComponent(currentRelativeUrl);
+      showState("login");
+    }
+
+    async function getJson(url, options) {
+      const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json", ...(options?.headers || {}) }, ...options });
+      let body = {};
+      try { body = await response.json(); } catch (_) {}
+      return { response, body };
+    }
+
+    function loadHlsJs() {
+      if (window.Hls) return Promise.resolve(window.Hls);
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js";
+        script.integrity = "sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn";
+        script.crossOrigin = "anonymous";
+        script.onload = () => resolve(window.Hls);
+        script.onerror = () => reject(new Error("Không tải được trình phát HLS"));
+        document.head.append(script);
+      });
+    }
+
+    async function play(manifestUrl) {
+      const video = document.querySelector("#video");
+      const parsedUrl = new URL(manifestUrl, location.origin);
+      if (!/^https?:$/.test(parsedUrl.protocol)) throw new Error("Đường dẫn video không hợp lệ");
+
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.onerror = () => showError("Video bị gián đoạn", "Không thể tải luồng bài học. Hãy tải lại trang và thử lần nữa.");
+        video.src = parsedUrl.href;
+        video.classList.add("ready");
+        states.forEach(name => document.querySelector(`#${name}`).hidden = true);
+        return;
+      }
+
+      const Hls = await loadHlsJs();
+      if (!Hls?.isSupported()) throw new Error("Trình duyệt này chưa hỗ trợ phát HLS");
+      hls?.destroy();
+      hls = new Hls({
+        enableWorker: true,
+        xhrSetup(xhr) { xhr.withCredentials = true; }
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          hls.destroy();
+          showError("Video bị gián đoạn", "Không thể tiếp tục phát. Hãy tải lại trang và thử lần nữa.");
+        }
+      });
+      hls.loadSource(parsedUrl.href);
+      hls.attachMedia(video);
+      video.classList.add("ready");
+      states.forEach(name => document.querySelector(`#${name}`).hidden = true);
+    }
+
+    async function start() {
+      showState("loading");
+      if (!courseId || !lessonId) {
+        showError("Thiếu thông tin bài học", "Hãy mở lại bài học từ liên kết bot đã gửi trong Discord.");
+        return;
+      }
+
+      try {
+        const auth = await getJson("/api/auth");
+        if (auth.response.status === 401 || (auth.response.ok && !auth.body.authenticated && !auth.body.user)) {
+          showLogin();
+          return;
+        }
+        if (!auth.response.ok) throw new Error("Không thể kiểm tra phiên đăng nhập");
+
+        const user = auth.body.user || {};
+        document.querySelector("#user-name").textContent = user.displayName || user.username || user.name || "Thành viên Nixart";
+        document.querySelector("#account").classList.add("visible");
+
+        const query = new URLSearchParams({ course: courseId, lesson: lessonId });
+        const access = await getJson("/api/learning-access?" + query);
+        if (access.response.status === 401) {
+          showLogin();
+          return;
+        }
+        if (access.response.status === 403) {
+          showError("Bạn chưa có quyền xem bài này", "Hãy kiểm tra khóa đã mua hoặc thời hạn gói trong Discord.");
+          return;
+        }
+        if (!access.response.ok || !access.body.manifestUrl) throw new Error("Bài học hiện chưa sẵn sàng");
+
+        const courseName = label(access.body.course, "Khóa học Nixart");
+        const lessonName = label(access.body.lesson, "Bài học");
+        document.querySelector("#course-name").textContent = courseName;
+        document.querySelector("#lesson-name").textContent = lessonName;
+        document.querySelector("#meta-title").textContent = `${courseName} · ${lessonName}`;
+        document.title = `${lessonName} — Nixart`;
+        await play(access.body.manifestUrl);
+      } catch (error) {
+        showError("Chưa thể mở bài học", error.message || "Hệ thống đang bận. Hãy thử lại sau.");
+      }
+    }
+
+    document.querySelector("#retry").addEventListener("click", start);
+    document.querySelector("#logout").addEventListener("click", async () => {
+      const button = document.querySelector("#logout");
+      button.disabled = true;
+      try {
+        await fetch("/api/auth", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ action: "logout" })
+        });
+      } finally {
+        location.href = "/";
+      }
+    });
+    window.addEventListener("pagehide", () => hls?.destroy());
+    start();
+  </script>
+</body>
+</html>

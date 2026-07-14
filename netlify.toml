@@ -4,6 +4,7 @@
 
 [functions]
   node_bundler = "esbuild"
+  included_files = ["content/catalog.json"]
 
 # Goi /api/state se chay function state.js
 [[redirects]]
@@ -34,6 +35,16 @@
 [[redirects]]
   from = "/api/auth"
   to = "/.netlify/functions/auth"
+  status = 200
+
+[[redirects]]
+  from = "/api/catalog"
+  to = "/.netlify/functions/catalog"
+  status = 200
+
+[[redirects]]
+  from = "/api/traffic"
+  to = "/.netlify/functions/traffic"
   status = 200
 
 [[redirects]]

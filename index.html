@@ -1,1947 +1,521 @@
-<!DOCTYPE html>
-<html lang="vi"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VOICE STUDIO - Tiến độ lồng tiếng</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-
-<style>
-  :root {
-    --bg: #100c08;
-    --bg-soft: #18130d;
-    --panel: #1f1812;
-    --panel-2: #271e15;
-    --line: #3a2e1f;
-    --amber: #ff9e2c;
-    --amber-hi: #ffc46b;
-    --green: #4ddb8e;
-    --red: #ff4d3d;
-    --pending: #7d6f59;
-    --muted: #9c8c74;
-    --text: #f3ead9;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background:
-      radial-gradient(circle at 20% 18%, rgba(255,158,44,.13), transparent 28%),
-      radial-gradient(circle at 82% 8%, rgba(77,219,142,.08), transparent 24%),
-      linear-gradient(115deg, transparent 0 42%, rgba(255,158,44,.045) 48%, transparent 55%),
-      linear-gradient(rgba(255,158,44,.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,158,44,.03) 1px, transparent 1px),
-      var(--bg);
-    background-size: auto, auto, 260% 260%, 42px 42px, 42px 42px, auto;
-    color: var(--text);
-    font-family: 'Sora', sans-serif;
-    min-height: 100vh;
-    animation: bg-drift 18s ease-in-out infinite alternate;
-  }
-
-  .workshop-loader {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: grid;
-    place-items: center;
-    padding: 24px;
-    background:
-      linear-gradient(rgba(255,158,44,.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,158,44,.045) 1px, transparent 1px),
-      radial-gradient(circle at 50% 38%, #261a0e 0, #100c08 52%);
-    background-size: 32px 32px, 32px 32px, auto;
-    transition: opacity .45s ease, visibility .45s ease;
-  }
-
-  .workshop-loader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-
-  .loader-frame {
-    position: relative;
-    width: min(520px, 100%);
-    padding: 38px 34px 32px;
-    border: 1px solid #4d3820;
-    background: rgba(20,14,9,.9);
-    box-shadow: 0 22px 70px rgba(0,0,0,.58), inset 0 0 40px rgba(255,158,44,.035);
-    clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
-  }
-
-  .loader-frame::before, .loader-frame::after {
-    content: "";
-    position: absolute;
-    width: 42px;
-    height: 42px;
-    border-color: var(--amber);
-    opacity: .75;
-  }
-
-  .loader-frame::before { top: 10px; left: 10px; border-top: 2px solid; border-left: 2px solid; }
-  .loader-frame::after { right: 10px; bottom: 10px; border-right: 2px solid; border-bottom: 2px solid; }
-  .loader-code { color: var(--amber); font: 600 10px 'JetBrains Mono', monospace; letter-spacing: 2.4px; }
-  .loader-title { margin: 12px 0 4px; font: 48px/1 'Bebas Neue', sans-serif; letter-spacing: 2px; }
-  .loader-title span { color: var(--amber); }
-  .loader-status { color: var(--muted); font: 11px 'JetBrains Mono', monospace; letter-spacing: 1px; }
-
-  .loader-machine { position: relative; height: 54px; margin: 28px 0 22px; border-bottom: 2px solid #4d3820; overflow: hidden; }
-  .loader-machine::before {
-    content: "";
-    position: absolute;
-    left: -45%;
-    bottom: 7px;
-    width: 45%;
-    height: 5px;
-    background: linear-gradient(90deg, transparent, var(--amber), var(--amber-hi), transparent);
-    filter: drop-shadow(0 0 7px rgba(255,158,44,.8));
-    animation: workshop-scan 1.35s linear infinite;
-  }
-
-  .loader-cogs { display: flex; align-items: flex-end; justify-content: center; gap: 10px; height: 100%; }
-  .loader-cog { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 4px; border: 5px dashed #6d4b25; border-radius: 50%; animation: workshop-spin 2.2s linear infinite; }
-  .loader-cog::after { content: ""; width: 8px; height: 8px; border: 2px solid var(--amber); border-radius: 50%; }
-  .loader-cog.small { width: 24px; height: 24px; border-width: 4px; animation-direction: reverse; animation-duration: 1.6s; }
-
-  .loader-track { height: 4px; overflow: hidden; background: #332416; }
-  .loader-bar { width: 38%; height: 100%; background: linear-gradient(90deg, transparent, var(--amber), var(--amber-hi)); animation: workshop-load 1.2s ease-in-out infinite; }
-  .loader-foot { display: flex; justify-content: space-between; margin-top: 9px; color: #715b42; font: 9px 'JetBrains Mono', monospace; letter-spacing: 1px; }
-
-  @keyframes workshop-spin { to { transform: rotate(360deg); } }
-  @keyframes workshop-scan { to { left: 100%; } }
-  @keyframes workshop-load { 0% { transform: translateX(-105%); } 100% { transform: translateX(265%); } }
-  @keyframes bg-drift {
-    from { background-position: 0 0, 0 0, 0% 50%, 0 0, 0 0, 0 0; }
-    to { background-position: 28px -18px, -22px 16px, 100% 50%, 18px 24px, 18px 24px, 0 0; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .loader-cog, .loader-machine::before, .loader-bar { animation-duration: 3s; }
-    body { animation: none; }
-  }
-
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 24px 60px; }
-  #particle-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .72; }
-  #public-view, #admin-view { position: relative; z-index: 1; }
-
-  .top { margin-bottom: 38px; }
-
-  h1 {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(40px, 7vw, 68px);
-    letter-spacing: 2px;
-    line-height: 1;
-  }
-
-  h1 span { color: var(--amber); }
-
-  #brand {
-    cursor: pointer;
-    display: inline-block;
-    user-select: none;
-  }
-
-  .top p {
-    color: var(--muted);
-    margin-top: 6px;
-    font-size: 15px;
-    font-weight: 300;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-  }
-
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    overflow: hidden;
-    transition: transform .3s ease, border-color .3s, box-shadow .3s;
-  }
-
-  .card:hover {
-    transform: translateY(-5px);
-    border-color: var(--amber);
-    box-shadow: 0 16px 36px rgba(0,0,0,.5);
-  }
-
-  .thumb {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-  }
-
-  .thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform .5s ease;
-  }
-
-  .card:hover .thumb img { transform: scale(1.06); }
-
-  .thumb::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to top, rgba(16,12,8,.85), transparent 55%);
-  }
-
-  .badge {
-    position: absolute;
-    top: 11px;
-    left: 11px;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 3px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 1.4px;
-    text-transform: uppercase;
-    backdrop-filter: blur(4px);
-  }
-
-  .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
-  .badge.doing { background: rgba(255,158,44,.18); color: var(--amber-hi); border: 1px solid var(--amber); }
-  .badge.doing .dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: blink 1.4s infinite; }
-  .badge.pending { background: rgba(125,111,89,.2); color: #d9c9ad; border: 1px solid var(--pending); }
-  .badge.pending .dot { background: var(--pending); }
-  .badge.done { background: rgba(77,219,142,.15); color: var(--green); border: 1px solid var(--green); }
-  .badge.done .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .badge.asset { background: rgba(88,101,242,.17); color: #aeb7ff; border: 1px solid #7380ff; }
-  .badge.asset .dot { background: #8994ff; box-shadow: 0 0 6px #8994ff; }
-
-  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-
-  .body { padding: 16px 16px 18px; }
-  .body h3 { margin-bottom: 6px; font-size: 17px; font-weight: 600; line-height: 1.25; }
-
-  .meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-  }
-
-  .meta .eta { color: var(--text); }
-  .meta .pct { color: var(--amber-hi); font-weight: 600; }
-
-  .track {
-    height: 7px;
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .fill {
-    width: 0;
-    height: 100%;
-    border-radius: 4px;
-    background: linear-gradient(90deg, var(--amber), var(--amber-hi));
-    transition: width 1s cubic-bezier(.2,.8,.2,1);
-  }
-
-  .fill.done { background: linear-gradient(90deg, #2fae6c, var(--green)); }
-  .fill.pending { background: var(--pending); }
-
-  .contact {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .contact a {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 7px;
-    border: 1px solid var(--line);
-    background: var(--bg-soft);
-    color: var(--muted);
-    transition: transform .2s, border-color .2s, color .2s, background .2s;
-  }
-
-  .contact a:hover { transform: translateY(-2px); }
-  .contact a.fb:hover { color: #fff; background: #1877f2; border-color: #1877f2; }
-  .contact a.dc:hover { color: #fff; background: #5865f2; border-color: #5865f2; }
-  .contact a.preview { width: auto; padding: 0 10px; font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .8px; text-decoration: none; text-transform: uppercase; }
-  .contact a.preview:hover { color: var(--text); background: #332719; border-color: #5a4429; }
-  .contact a svg { width: 17px; height: 17px; fill: currentColor; }
-
-  #admin-view { display: none; }
-  body.admin-open #public-view { display: none; }
-  body.admin-open #admin-view { display: block; }
-
-  .admin-wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 70px; }
-
-  .admin-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin-bottom: 32px;
-  }
-
-  .admin-top h1 { font-size: clamp(36px, 6vw, 56px); }
-  .admin-top .sub { color: var(--muted); font-size: 13px; margin-top: 4px; font-weight: 300; }
-
-  .panel {
-    margin-bottom: 24px;
-    padding: 22px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-  }
-
-  .panel h2 {
-    margin-bottom: 18px;
-    color: var(--amber-hi);
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 24px;
-    letter-spacing: 1px;
-  }
-
-  label {
-    display: block;
-    margin-bottom: 6px;
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  input, select, textarea {
-    width: 100%;
-    margin-bottom: 16px;
-    padding: 10px 12px;
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: 'Sora', sans-serif;
-    font-size: 14px;
-    transition: border-color .2s;
-  }
-
-  .catalog-tabs { display: flex; gap: 8px; margin: 0 0 28px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-  .catalog-tab { color: var(--muted); background: transparent; border: 1px solid var(--line); }
-  .catalog-tab.active { color: #1a1206; background: var(--amber); border-color: var(--amber); }
-  .account-actions { display: flex; gap: 8px; margin-left: auto; }
-  .account-actions button { padding: 8px 12px; }
-  .auth-email { color: var(--amber-hi); font: 11px 'JetBrains Mono', monospace; align-self: center; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
-  .orders-list { display: grid; gap: 10px; margin-top: 16px; }
-  .traffic-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-  .traffic-card { padding: 14px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; }
-  .traffic-card b { display: block; color: var(--amber-hi); font: 700 22px 'JetBrains Mono', monospace; }
-  .traffic-card span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .8px; }
-  .delivery-box { display: grid; gap: 7px; margin-top: 10px; padding: 12px; background: #100c08; border: 1px solid #59452e; border-radius: 7px; }
-  .delivery-line { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 7px; border-bottom: 1px solid #2d241b; }
-  .delivery-line:last-child { padding-bottom: 0; border-bottom: 0; }
-  .delivery-line span { flex: 1; color: #ffc46b; font: 13px/1.5 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-word; }
-  .delivery-line a { color: #69b7ff; text-decoration: underline; }
-  .delivery-copy { flex: 0 0 auto; padding: 4px 8px; color: var(--amber-hi); background: #241b12; border: 1px solid #59452e; font-size: 10px; }
-  .order-item { padding: 13px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 7px; }
-  .order-item strong { display: block; margin-bottom: 6px; }
-  .order-item span { color: var(--muted); font: 11px 'JetBrains Mono', monospace; }
-  .lookup-box { margin: 0 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-  .lookup-box h2 { margin-bottom: 4px; font-size: 20px; }
-  .lookup-box p { margin-bottom: 14px; color: var(--muted); font-size: 13px; }
-  .lookup-result { margin-top: 12px; padding: 12px; border: 1px solid #59452e; border-radius: 7px; background: #100c08; color: var(--muted); font-size: 13px; line-height: 1.55; }
-  .lookup-result strong { display: block; color: var(--amber-hi); margin-bottom: 6px; }
-  .admin-table-wrap { overflow-x: auto; margin-top: 14px; }
-  .admin-table { width: 100%; border-collapse: collapse; min-width: 780px; }
-  .admin-table th, .admin-table td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12px; vertical-align: top; }
-  .admin-table th { color: var(--amber-hi); font: 700 10px 'JetBrains Mono', monospace; letter-spacing: .8px; text-transform: uppercase; }
-  .admin-table td { color: var(--muted); }
-  .admin-table code { color: var(--text); font-family: 'JetBrains Mono', monospace; }
-  .status-pill { display: inline-flex; padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--amber-hi); font: 700 10px 'JetBrains Mono', monospace; text-transform: uppercase; }
-
-  textarea { min-height: 90px; resize: vertical; }
-  input[type="checkbox"] { width: auto; margin: 0 8px 0 0; }
-
-  input:focus, select:focus { outline: none; border-color: var(--amber); }
-  select option { background: var(--panel); }
-
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-
-  .row-img {
-    display: grid;
-    grid-template-columns: 1fr 120px;
-    gap: 16px;
-    align-items: start;
-  }
-
-  .preview {
-    aspect-ratio: 16 / 9;
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .preview img { width: 100%; height: 100%; object-fit: cover; }
-
-  .btns, .bar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .bar { margin-bottom: 22px; }
-
-  button {
-    padding: 11px 18px;
-    border: 0;
-    border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: .2s;
-  }
-
-  .btn-primary { background: var(--amber); color: #1a1206; }
-  .btn-primary:hover { background: var(--amber-hi); }
-  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
-  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
-  .btn-danger:hover { background: var(--red); color: #fff; }
-  .btn-save { background: var(--green); color: #08210f; }
-  .btn-save:hover { filter: brightness(1.1); }
-
-  .course-description { min-height: 42px; margin: 8px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-  .detail-trigger { width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
-  .detail-trigger h3 { transition: color .2s; }
-  .detail-trigger:hover h3 { color: var(--amber-hi); }
-  .product-detail-image { width: 100%; max-height: 340px; object-fit: cover; border-radius: 8px; }
-  .product-detail-description { margin: 18px 0; white-space: pre-wrap; color: var(--muted); line-height: 1.65; }
-  .sale-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
-  .price { color: var(--amber-hi); font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 700; }
-  .buy-btn:disabled { cursor: not-allowed; opacity: .45; }
-  .download-btn { display: inline-flex; align-items: center; justify-content: center; padding: 11px 18px; border-radius: 6px; background: var(--green); color: #08210f; font: 600 12px 'JetBrains Mono', monospace; letter-spacing: 1px; text-decoration: none; transition: filter .2s, transform .2s; }
-  .download-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
-  .free-label { color: var(--green); font: 700 15px 'JetBrains Mono', monospace; }
-
-  .modal { position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 18px; background: rgba(0,0,0,.76); }
-  .modal.open { display: grid; }
-  .modal-box { width: min(620px, 100%); max-height: 92vh; overflow-y: auto; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-  .modal-head { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
-  .modal-head h2 { color: var(--amber-hi); }
-  .modal-close { padding: 4px 10px; color: var(--muted); background: transparent; font-size: 22px; }
-  .payment-box { display: grid; grid-template-columns: 180px 1fr; gap: 18px; margin-bottom: 20px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; }
-  .payment-box img { width: 180px; background: #fff; border-radius: 6px; }
-  .payment-details p { margin-bottom: 8px; color: var(--muted); font-size: 13px; }
-  .payment-details strong, .payment-details code { display: block; color: var(--text); font-size: 15px; overflow-wrap: anywhere; }
-  .order-note { margin: 10px 0 18px; color: var(--amber-hi); font-size: 12px; line-height: 1.5; }
-
-  .item {
-    display: grid;
-    grid-template-columns: 70px 1fr auto;
-    gap: 14px;
-    align-items: center;
-    margin-bottom: 10px;
-    padding: 10px 12px;
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-  }
-
-  .item .ph {
-    width: 70px;
-    height: 44px;
-    object-fit: cover;
-    background: var(--panel-2);
-    border-radius: 5px;
-  }
-
-  .item .info h4 { margin-bottom: 3px; font-size: 14px; font-weight: 600; }
-
-  .item .info .m {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-  }
-
-  .pill { padding: 2px 8px; border-radius: 20px; font-size: 10px; letter-spacing: .5px; }
-  .pill.doing { background: rgba(255,158,44,.18); color: var(--amber-hi); }
-  .pill.pending { background: rgba(125,111,89,.25); color: #d9c9ad; }
-  .pill.done { background: rgba(77,219,142,.15); color: var(--green); }
-
-  .item .acts { display: flex; gap: 8px; }
-  .item .acts button { padding: 7px 11px; }
-
-  .hint {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 300;
-    line-height: 1.5;
-  }
-
-  .empty {
-    padding: 6px 2px;
-    color: var(--muted);
-    font-style: italic;
-    font-weight: 300;
-  }
-
-  .toast {
-    position: fixed;
-    left: 50%;
-    bottom: 24px;
-    z-index: 99;
-    padding: 12px 22px;
-    background: var(--green);
-    border-radius: 8px;
-    color: #08210f;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    opacity: 0;
-    transform: translateX(-50%) translateY(80px);
-    transition: .35s;
-  }
-
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .support-float {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    z-index: 98;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 14px;
-    border: 1px solid #59452e;
-    border-radius: 999px;
-    background: rgba(31,24,18,.94);
-    color: var(--amber-hi);
-    box-shadow: 0 14px 36px rgba(0,0,0,.45);
-    font: 700 11px 'JetBrains Mono', monospace;
-    letter-spacing: .8px;
-    text-transform: uppercase;
-  }
-  .support-float:hover { border-color: var(--amber); transform: translateY(-1px); }
-  .support-bubble {
-    position: fixed;
-    right: 18px;
-    bottom: 72px;
-    z-index: 98;
-    width: min(300px, calc(100vw - 36px));
-    padding: 14px;
-    border: 1px solid #59452e;
-    border-radius: 14px 14px 4px 14px;
-    background: rgba(31,24,18,.97);
-    box-shadow: 0 18px 46px rgba(0,0,0,.52);
-    color: var(--text);
-    pointer-events: auto;
-  }
-  .support-bubble p { color: var(--muted); font-size: 13px; line-height: 1.55; margin-bottom: 12px; }
-  .support-bubble strong { display: block; color: var(--amber-hi); margin-bottom: 5px; }
-  .support-bubble a { display: inline-flex; padding: 9px 12px; border-radius: 7px; background: #5865f2; color: #fff; font: 700 11px 'JetBrains Mono', monospace; text-decoration: none; text-transform: uppercase; letter-spacing: .7px; }
-
-  @media (max-width: 620px) {
-    .row, .row-img { grid-template-columns: 1fr; }
-    .traffic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .item { grid-template-columns: 60px 1fr; }
-    .item .ph { width: 60px; height: 38px; }
-    .item .acts { grid-column: 1 / -1; }
-    .payment-box { grid-template-columns: 1fr; }
-    .payment-box img { width: min(240px, 100%); margin: auto; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    #particle-bg { display: none; }
-  }
-
-  /* Minimal monochrome surface system. */
-  :root {
-    --bg: #0a0a0b;
-    --bg-soft: #141416;
-    --panel: #19191b;
-    --panel-2: #232326;
-    --line: #303034;
-    --amber: #f5f5f6;
-    --amber-hi: #ffffff;
-    --green: #d4d4d8;
-    --red: #f87171;
-    --pending: #71717a;
-    --muted: #a1a1aa;
-    --text: #f4f4f5;
-  }
-
-  body { background: radial-gradient(70% 55% at 50% -10%, #25252a 0%, transparent 70%), var(--bg); font-family: Inter, sans-serif; animation: none; }
-  #particle-bg { opacity: .24; }
-  h1, .panel h2 { font-family: Inter, sans-serif; letter-spacing: -.045em; font-weight: 800; }
-  h1 { font-size: clamp(38px, 6vw, 60px); }
-  h1 span, .panel h2, .auth-email, .traffic-card b, .price, .modal-head h2, .order-note, .lookup-result strong, .support-bubble strong { color: var(--text); }
-  .top p, .admin-top .sub { max-width: 540px; line-height: 1.6; }
-  .workshop-loader { background: #0a0a0b; }
-  .loader-frame { border-color: var(--line); background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.45); clip-path: none; border-radius: 16px; }
-  .loader-frame::before, .loader-frame::after { border-color: var(--line); opacity: 1; }
-  .loader-code, .loader-status, .loader-foot, .badge, .meta, label, .traffic-card span, .delivery-line span, .delivery-copy, .admin-table th, .status-pill, .item .info .m, .pill, button, .download-btn, .support-float, .support-bubble a, .price, .free-label { font-family: Inter, sans-serif; }
-  .loader-title { font-family: Inter, sans-serif; font-size: 34px; letter-spacing: -.04em; font-weight: 800; }
-  .loader-title span { color: var(--text); }
-  .loader-cog { border-color: #52525b; }
-  .loader-cog::after { border-color: var(--text); }
-  .loader-machine::before, .loader-bar, .fill { background: var(--text); filter: none; }
-  .wrap { max-width: 1160px; }
-  .grid { gap: 16px; }
-  .card, .panel, .lookup-box, .modal-box { border-color: var(--line); border-radius: 14px; box-shadow: none; }
-  .card:hover { transform: translateY(-2px); border-color: #55555b; box-shadow: 0 14px 36px rgba(0,0,0,.3); }
-  .thumb::after { background: linear-gradient(to top, rgba(10,10,11,.7), transparent 55%); }
-  .badge { border-radius: 999px; letter-spacing: .04em; font-weight: 600; }
-  .badge.doing, .badge.pending, .badge.done, .badge.asset { color: var(--text); background: rgba(244,244,245,.08); border-color: var(--line); }
-  .badge.doing .dot, .badge.pending .dot, .badge.done .dot, .badge.asset .dot { background: var(--text); box-shadow: none; }
-  .meta .pct { color: var(--text); }
-  .fill.done, .fill.pending { background: #a1a1aa; }
-  .catalog-tab, .btn-ghost { border-radius: 8px; }
-  .catalog-tab.active, .btn-primary, .btn-save, .download-btn, .toast { background: var(--text); color: #09090b; border-color: var(--text); }
-  .btn-primary:hover, .btn-save:hover, .download-btn:hover { background: #d4d4d8; filter: none; }
-  input, select, textarea, .traffic-card, .order-item, .item, .delivery-box, .lookup-result, .payment-box { border-color: var(--line); border-radius: 10px; }
-  input:focus, select:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgba(244,244,245,.12); }
-  .delivery-box, .lookup-result { background: var(--bg); }
-  .delivery-line { border-color: var(--line); }
-  .delivery-copy { color: var(--text); background: var(--panel-2); border-color: var(--line); }
-  .support-float, .support-bubble { border-color: var(--line); background: rgba(25,25,27,.96); }
-  .support-float { color: var(--text); }
-  .support-float:hover { border-color: #55555b; }
-  .support-bubble a { background: var(--text); color: #09090b; }
-</style>
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Nixart đã chuyển cộng đồng, tư vấn và thanh toán sang Discord. Chọn khóa học riêng lẻ hoặc gói học theo tháng.">
+  <meta name="theme-color" content="#f4f0e7">
+  <title>Nixart — Học cùng cộng đồng trên Discord</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --ink: #18181b;
+      --muted: #66636d;
+      --paper: #f4f0e7;
+      --surface: #fffdf8;
+      --line: #d8d2c7;
+      --accent: #5865f2;
+      --accent-dark: #3d49cf;
+      --lime: #d8ff63;
+      --radius: 24px;
+      --shadow: 0 24px 70px rgba(39, 35, 48, .12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 88% 2%, rgba(88, 101, 242, .15), transparent 27rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    a { color: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    .shell { width: min(1160px, calc(100% - 40px)); margin-inline: auto; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 18px;
+      color: var(--accent-dark);
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 24px; height: 2px; background: currentColor; }
+    .button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 0 20px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      color: white;
+      background: var(--ink);
+      box-shadow: 0 5px 0 rgba(24, 24, 27, .18);
+      font-weight: 800;
+      text-decoration: none;
+      transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    .button:hover { transform: translateY(-2px); box-shadow: 0 8px 0 rgba(24, 24, 27, .14); }
+    .button:active { transform: translateY(1px); box-shadow: 0 3px 0 rgba(24, 24, 27, .14); }
+    a[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+    .button.discord { border-color: var(--accent); background: var(--accent); }
+    .button.ghost { color: var(--ink); background: transparent; box-shadow: none; }
+    .button svg { width: 19px; height: 19px; fill: currentColor; }
+
+    header {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      border-bottom: 1px solid rgba(216, 210, 199, .78);
+      background: rgba(244, 240, 231, .86);
+      backdrop-filter: blur(15px);
+    }
+    nav { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
+    .brand-mark { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; color: white; background: var(--ink); font-size: .78rem; letter-spacing: -.04em; transform: rotate(-4deg); }
+    .nav-links { display: flex; align-items: center; gap: 25px; }
+    .nav-links > a:not(.button) { color: var(--muted); font-size: .9rem; font-weight: 700; text-decoration: none; }
+
+    .hero { padding: 86px 0 72px; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: 1.07fr .93fr; align-items: center; gap: 68px; }
+    .notice {
+      width: fit-content;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 25px;
+      padding: 8px 13px 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 253, 248, .65);
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 750;
+    }
+    .notice strong { padding: 3px 8px; border-radius: 999px; color: var(--ink); background: var(--lime); font-size: .68rem; letter-spacing: .08em; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 720px; margin-bottom: 24px; font-size: clamp(3.25rem, 7vw, 6.7rem); line-height: .93; letter-spacing: -.078em; }
+    h1 span { position: relative; color: var(--accent); white-space: nowrap; }
+    h1 span::after { content: ""; position: absolute; right: 0; bottom: -.05em; left: .05em; height: .09em; border-radius: 99px; background: var(--lime); transform: rotate(-1.5deg); z-index: -1; }
+    .hero-copy > p { max-width: 610px; margin-bottom: 30px; color: var(--muted); font-size: clamp(1rem, 2vw, 1.18rem); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .microcopy { margin-top: 18px; color: var(--muted); font-size: .78rem; }
+
+    .discord-window {
+      position: relative;
+      min-height: 520px;
+      padding: 15px;
+      border: 1px solid rgba(24, 24, 27, .8);
+      border-radius: 30px;
+      background: #22232a;
+      box-shadow: var(--shadow), 13px 13px 0 var(--lime);
+      transform: rotate(1.3deg);
+    }
+    .window-bar { height: 39px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px 0 4px; color: #b5b5ba; font-size: .7rem; font-weight: 750; }
+    .dots { display: flex; gap: 6px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; background: #5f6068; }
+    .window-body { height: 450px; display: grid; grid-template-columns: 78px 1fr; overflow: hidden; border-radius: 20px; background: #2b2d31; }
+    .server-rail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 18px; background: #1e1f22; }
+    .server-icon { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 15px; color: white; background: #313338; font-weight: 900; }
+    .server-icon.active { border-radius: 13px; background: var(--accent); }
+    .server-icon.muted { color: #8d8f98; font-size: 1.25rem; }
+    .chat { display: flex; flex-direction: column; min-width: 0; }
+    .chat-head { height: 58px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #202225; color: #f2f3f5; font-size: .85rem; font-weight: 800; }
+    .chat-head::before { content: "#"; margin-right: 8px; color: #949ba4; font-size: 1.2rem; }
+    .messages { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 19px; padding: 24px 20px 17px; }
+    .message { display: grid; grid-template-columns: 40px 1fr; gap: 11px; color: #dbdee1; font-size: .75rem; }
+    .avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; color: white; background: #ec6b6b; font-weight: 900; }
+    .avatar.bot { background: var(--accent); }
+    .message strong { display: block; margin-bottom: 4px; color: #f2f3f5; }
+    .message small { margin-left: 6px; color: #949ba4; font-weight: 500; }
+    .message p { margin: 0; color: #b5bac1; }
+    .course-link { margin-top: 8px; padding: 12px; border-left: 3px solid var(--accent); border-radius: 4px; background: #24262b; color: #d7d9ff; font-weight: 750; }
+    .chat-input { height: 44px; margin: 0 16px 17px; display: flex; align-items: center; padding: 0 14px; border-radius: 9px; color: #949ba4; background: #383a40; font-size: .72rem; }
+    .float-tag { position: absolute; right: -22px; bottom: 36px; padding: 13px 16px; border: 1px solid var(--ink); border-radius: 14px; background: var(--surface); box-shadow: 7px 7px 0 var(--ink); font-size: .8rem; font-weight: 900; transform: rotate(-4deg); }
+
+    .trust { padding: 24px 0; border-block: 1px solid var(--line); }
+    .trust-grid { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); align-items: center; gap: 20px; }
+    .trust p { margin: 0; color: var(--muted); font-size: .86rem; }
+    .trust-item strong { display: block; margin-bottom: 2px; font-size: 1rem; }
+
+    section { padding: 104px 0; }
+    .section-head { max-width: 700px; margin-bottom: 46px; }
+    h2 { margin-bottom: 16px; font-size: clamp(2.25rem, 5vw, 4.4rem); line-height: 1; letter-spacing: -.065em; }
+    .section-head > p { color: var(--muted); font-size: 1.04rem; }
+
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: steps; }
+    .step { position: relative; min-height: 250px; padding: 28px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); counter-increment: steps; }
+    .step::after { content: "0" counter(steps); position: absolute; right: 18px; bottom: -33px; color: rgba(88, 101, 242, .1); font-size: 8rem; font-weight: 950; line-height: 1; letter-spacing: -.1em; }
+    .step-icon { width: 46px; height: 46px; display: grid; place-items: center; margin-bottom: 45px; border-radius: 14px; color: white; background: var(--accent); font-weight: 900; }
+    .step h3 { margin-bottom: 9px; font-size: 1.15rem; }
+    .step p { position: relative; z-index: 1; margin-bottom: 0; color: var(--muted); font-size: .9rem; }
+
+    .pricing-wrap { background: var(--ink); color: white; }
+    .pricing-wrap .eyebrow { color: var(--lime); }
+    .pricing-wrap .section-head > p { color: #aaa8b0; }
+    .pricing { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+    .plan { position: relative; display: flex; flex-direction: column; min-height: 465px; padding: 33px; border: 1px solid #3b3b42; border-radius: 28px; background: #222226; }
+    .plan.featured { color: var(--ink); background: var(--lime); border-color: var(--lime); transform: translateY(-10px); }
+    .plan-badge { position: absolute; top: 24px; right: 24px; padding: 6px 10px; border-radius: 999px; color: var(--ink); background: white; font-size: .66rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+    .plan h3 { margin-bottom: 6px; font-size: 1.25rem; }
+    .plan-desc { min-height: 48px; margin-bottom: 24px; color: #aaa8b0; font-size: .88rem; }
+    .featured .plan-desc { color: #4c531c; }
+    .price { margin-bottom: 27px; font-size: clamp(2.6rem, 6vw, 4.7rem); font-weight: 950; line-height: 1; letter-spacing: -.07em; }
+    .price small { margin-left: 8px; font-size: .8rem; font-weight: 750; letter-spacing: 0; opacity: .62; }
+    .features { display: grid; gap: 13px; margin: 0 0 31px; padding: 0; list-style: none; }
+    .features li { display: flex; gap: 10px; color: #d3d1d7; font-size: .88rem; }
+    .featured .features li { color: #353913; }
+    .features li::before { content: "✓"; width: 21px; height: 21px; flex: 0 0 21px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); background: var(--lime); font-size: .7rem; font-weight: 950; }
+    .featured .features li::before { color: white; background: var(--ink); }
+    .plan .button { width: 100%; margin-top: auto; }
+    .featured .button { color: white; background: var(--ink); }
+    .pricing-note { margin: 24px 0 0; color: #8d8b94; font-size: .78rem; text-align: center; }
+
+    .courses-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .course { min-height: 230px; display: flex; flex-direction: column; padding: 25px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .course-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 42px; }
+    .course-label { padding: 5px 9px; border-radius: 999px; color: var(--accent-dark); background: rgba(88, 101, 242, .1); font-size: .68rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+    .course-price { color: var(--muted); font-size: .78rem; font-weight: 750; }
+    .course h3 { margin-bottom: 8px; font-size: 1.15rem; }
+    .course p { margin-bottom: 21px; color: var(--muted); font-size: .86rem; }
+    .course a { margin-top: auto; color: var(--accent-dark); font-size: .83rem; font-weight: 850; text-decoration: none; }
+    .empty-course { grid-column: 1 / -1; min-height: auto; text-align: center; }
+
+    .faq-grid { display: grid; grid-template-columns: .78fr 1.22fr; gap: 70px; align-items: start; }
+    .faq-copy { position: sticky; top: 110px; }
+    details { border-top: 1px solid var(--line); }
+    details:last-child { border-bottom: 1px solid var(--line); }
+    summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 23px 0; cursor: pointer; font-weight: 850; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; color: var(--accent); font-size: 1.5rem; font-weight: 500; }
+    details[open] summary::after { content: "−"; }
+    details p { padding: 0 38px 23px 0; color: var(--muted); font-size: .9rem; }
+
+    .final-cta { padding-top: 10px; }
+    .cta-box { position: relative; overflow: hidden; padding: 70px; border-radius: 32px; color: white; background: var(--accent); }
+    .cta-box::after { content: "#"; position: absolute; right: 3%; bottom: -46%; color: rgba(255, 255, 255, .1); font-size: 23rem; font-weight: 950; line-height: 1; transform: rotate(9deg); }
+    .cta-box > * { position: relative; z-index: 1; }
+    .cta-box h2 { max-width: 760px; margin-bottom: 20px; }
+    .cta-box p { max-width: 620px; margin-bottom: 28px; color: #e1e3ff; }
+    .cta-box .button { color: var(--ink); background: var(--lime); border-color: var(--lime); }
+
+    footer { padding: 42px 0; }
+    footer .shell { display: flex; justify-content: space-between; gap: 24px; color: var(--muted); font-size: .78rem; }
+    footer p { margin: 0; }
+
+    @media (max-width: 900px) {
+      .nav-links > a:not(.button) { display: none; }
+      .hero { padding-top: 58px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 55px; }
+      .hero-copy { text-align: center; }
+      .notice, .hero-actions { margin-inline: auto; justify-content: center; }
+      .hero-copy > p { margin-inline: auto; }
+      .discord-window { width: min(610px, 100%); margin: auto; }
+      .trust-grid { grid-template-columns: repeat(3, 1fr); text-align: center; }
+      .trust-grid > p { grid-column: 1 / -1; }
+      .steps, .courses-grid { grid-template-columns: 1fr 1fr; }
+      .faq-grid { grid-template-columns: 1fr; gap: 25px; }
+      .faq-copy { position: static; }
+    }
+
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 28px, 1160px); }
+      nav { min-height: 66px; }
+      nav .button { min-height: 41px; padding-inline: 15px; font-size: .8rem; }
+      .hero { padding: 42px 0 58px; }
+      h1 { font-size: clamp(3.25rem, 18vw, 5rem); }
+      h1 span { white-space: normal; }
+      .hero-actions .button { width: 100%; }
+      .discord-window { min-height: 415px; padding: 9px; border-radius: 23px; box-shadow: 8px 8px 0 var(--lime); }
+      .window-body { height: 350px; grid-template-columns: 53px 1fr; }
+      .window-bar { height: 36px; }
+      .server-icon { width: 34px; height: 34px; border-radius: 12px; font-size: .7rem; }
+      .message { grid-template-columns: 31px 1fr; font-size: .68rem; }
+      .avatar { width: 30px; height: 30px; }
+      .messages { padding: 16px 12px 12px; gap: 13px; }
+      .chat-head { height: 48px; padding: 0 13px; }
+      .chat-input { margin: 0 10px 12px; }
+      .float-tag { right: 2px; bottom: -17px; }
+      .trust-grid { grid-template-columns: 1fr; gap: 13px; }
+      .trust-grid > p { grid-column: auto; }
+      section { padding: 76px 0; }
+      .steps, .pricing, .courses-grid { grid-template-columns: 1fr; }
+      .step { min-height: 215px; }
+      .step-icon { margin-bottom: 30px; }
+      .plan { min-height: 430px; padding: 27px; }
+      .plan.featured { transform: none; }
+      .cta-box { padding: 43px 25px; }
+      footer .shell { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
 </head>
 <body>
-<canvas id="particle-bg" aria-hidden="true"></canvas>
-<div class="workshop-loader" id="workshop-loader" role="status" aria-live="polite" aria-label="Đang tải website">
-  <div class="loader-frame">
-    <div class="loader-code">NIXART // WORKSHOP SYSTEM</div>
-    <div class="loader-title">VOICE <span>STUDIO</span></div>
-    <div class="loader-status">ĐANG KHỞI ĐỘNG XƯỞNG...</div>
-    <div class="loader-machine" aria-hidden="true">
-      <div class="loader-cogs"><span class="loader-cog"></span><span class="loader-cog small"></span><span class="loader-cog"></span></div>
-    </div>
-    <div class="loader-track" aria-hidden="true"><div class="loader-bar"></div></div>
-    <div class="loader-foot"><span>ASSEMBLING ASSETS</span><span>PLEASE STAND BY</span></div>
-  </div>
-</div>
-<section id="public-view">
-  <div class="wrap">
-    <div class="top">
-      <h1 id="brand">VOICE <span>STUDIO</span></h1>
-      <p id="tagline">Dịch vụ lồng tiếng khóa học chuyên nghiệp</p>
-    </div>
-    <nav class="catalog-tabs" aria-label="Danh mục sản phẩm">
-      <button class="catalog-tab active" id="tab-learning" type="button" onclick="switchCatalog('learning')">Khóa học & tài nguyên</button>
-      <button class="catalog-tab" id="tab-accounts" type="button" onclick="switchCatalog('accounts')">Tài khoản</button>
-      <div class="account-actions">
-        <span class="auth-email" id="auth-email" hidden></span>
-        <button class="btn-ghost" id="auth-login" type="button" onclick="openAuth()">Đăng nhập</button>
-        <button class="btn-ghost" id="auth-orders" type="button" onclick="openMyOrders()" hidden>Profile</button>
-        <button class="btn-ghost" id="auth-logout" type="button" onclick="signOutUser()" hidden>Đăng xuất</button>
+  <header>
+    <nav class="shell" aria-label="Điều hướng chính">
+      <a class="brand" href="#top" aria-label="Nixart, về đầu trang"><span class="brand-mark">NX</span><span data-brand>NIXART</span></a>
+      <div class="nav-links">
+        <a href="#cach-hoc">Cách học</a>
+        <a href="#goi-hoc">Gói học</a>
+        <a href="#khoa-hoc">Khóa học</a>
+        <a class="button discord" data-discord href="#tham-gia">Vào Discord</a>
       </div>
     </nav>
-    <div class="grid" id="grid">
-      <article class="card">
-        <div class="thumb">
-          <span class="badge doing"><span class="dot"></span>Đang làm</span>
-          <img src="https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg" alt="The Art of Effective Rigging 2" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
-        </div>
-        <div class="body">
-          <h3>The Art of Effective Rigging 2</h3>
-          <div class="meta"><span class="eta"></span><span class="pct">65%</span></div>
-          <div class="track"><div class="fill doing" data-w="65" style="width: 65%;"></div></div>
-        </div>
-      </article>
-      <article class="card">
-        <div class="thumb">
-          <span class="badge doing"><span class="dot"></span>Đang làm</span>
-          <img src="https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg" alt="70 Exercises for Perfecting Stylized Character Creation" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
-        </div>
-        <div class="body">
-          <h3>70 Exercises for Perfecting Stylized Character Creation</h3>
-          <div class="meta"><span class="eta"></span><span class="pct">10%</span></div>
-          <div class="track"><div class="fill doing" data-w="10" style="width: 10%;"></div></div>
-        </div>
-      </article>
-      <article class="card">
-        <div class="thumb">
-          <span class="badge done"><span class="dot"></span>Đã xong</span>
-          <img src="https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg" alt="Alive! Animation course in Blender" onerror="this.src='https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC'">
-        </div>
-        <div class="body">
-          <h3>Alive! Animation course in Blender</h3>
-          <div class="meta"><span class="eta"></span><span class="pct">100%</span></div>
-          <div class="track"><div class="fill done" data-w="100" style="width: 100%;"></div></div>
-        </div>
-      </article></div>
-  </div>
-</section>
+  </header>
 
-<section id="admin-view" aria-hidden="true">
-  <div class="admin-wrap">
-    <div class="admin-top">
-      <div>
-        <h1>QUẢN <span>TRỊ</span></h1>
-        <p class="sub">Thêm, sửa, xóa khóa học và thông tin studio.</p>
-      </div>
-      <button class="btn-ghost" type="button" onclick="hideAdmin()">Về trang chính</button>
-    </div>
-
-    <div class="panel">
-      <h2>Mật khẩu quản trị</h2>
-      <label for="admin-pass">Nhập mật khẩu để lưu thay đổi lên web</label>
-      <input id="admin-pass" type="password" placeholder="Mật khẩu admin" autocomplete="current-password">
-      <p class="hint">Mật khẩu này phải khớp với ADMIN_PASSWORD bạn đặt trên Netlify. Nhập sai sẽ không lưu được.</p>
-    </div>
-
-    <div class="panel">
-      <h2>Thông tin studio</h2>
-      <div class="row">
-        <div>
-          <label for="s-name">Tên studio</label>
-          <input id="s-name" placeholder="VOICE STUDIO">
+  <main id="top">
+    <section class="hero">
+      <div class="shell hero-grid">
+        <div class="hero-copy">
+          <div class="notice"><strong>THÔNG BÁO</strong> Nixart đã chuyển sang Discord</div>
+          <h1>Học trên web.<br><span>Gặp nhau ở Discord.</span></h1>
+          <p id="tagline">Cộng đồng, tư vấn khóa học và thanh toán giờ đây diễn ra trên Discord. Sau khi được cấp quyền, bạn vẫn xem bài trực tiếp và riêng tư trên website.</p>
+          <div class="hero-actions">
+            <a class="button discord" data-discord href="#tham-gia">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.54 5.34A16.3 16.3 0 0 0 15.44 4l-.5 1.02a15.2 15.2 0 0 0-5.87 0L8.55 4a16.6 16.6 0 0 0-4.1 1.35C1.86 9.16 1.16 12.9 1.5 16.6a16.7 16.7 0 0 0 5.03 2.55l1.23-1.68a10.5 10.5 0 0 1-1.93-.92l.47-.36a11.7 11.7 0 0 0 11.4 0l.47.36c-.62.36-1.27.67-1.94.92l1.23 1.68a16.7 16.7 0 0 0 5.03-2.55c.4-4.28-.75-7.98-2.95-11.26ZM8.72 14.47c-1.1 0-2-1-2-2.22s.88-2.23 2-2.23c1.12 0 2.02 1.01 2 2.23 0 1.22-.88 2.22-2 2.22Zm6.56 0c-1.1 0-2-1-2-2.22s.88-2.23 2-2.23c1.12 0 2.02 1.01 2 2.23 0 1.22-.88 2.22-2 2.22Z"/></svg>
+              Tham gia Discord
+            </a>
+            <a class="button ghost" href="#goi-hoc">Xem các gói học →</a>
+          </div>
+          <p class="microcopy">Mua riêng từng khóa hoặc học theo tháng · Xem video ngay trên web</p>
         </div>
-        <div>
-          <label for="s-tag">Mô tả ngắn</label>
-          <input id="s-tag" placeholder="Dịch vụ lồng tiếng...">
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label for="s-fb">Link Facebook</label>
-          <input id="s-fb" placeholder="https://facebook.com/...">
-        </div>
-        <div>
-          <label for="s-dc">Link Discord</label>
-          <input id="s-dc" placeholder="https://discord.gg/...">
-        </div>
-      </div>
-      <h2 style="margin-top:12px">Thông tin chuyển khoản</h2>
-      <div class="row">
-        <div>
-          <label for="s-bank-bin">Mã ngân hàng / BIN</label>
-          <input id="s-bank-bin" placeholder="Vd: MB hoặc 970422">
-        </div>
-        <div>
-          <label for="s-bank-account">Số tài khoản</label>
-          <input id="s-bank-account" placeholder="Số tài khoản nhận tiền">
-        </div>
-      </div>
-      <label for="s-bank-name">Tên chủ tài khoản</label>
-      <input id="s-bank-name" placeholder="NGUYEN VAN A">
-      <button class="btn-primary" type="button" onclick="saveStudio()">Lưu thông tin</button>
-    </div>
 
-    <div class="panel">
-      <h2>Traffic website</h2>
-      <div class="traffic-grid">
-        <div class="traffic-card"><b id="traffic-total">-</b><span>Tổng lượt</span></div>
-        <div class="traffic-card"><b id="traffic-today">-</b><span>Hôm nay</span></div>
-        <div class="traffic-card"><b id="traffic-week">-</b><span>7 ngày</span></div>
-        <div class="traffic-card"><b id="traffic-online">-</b><span>Online 5 phút</span></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2>Đơn hàng & Sepay</h2>
-      <p class="hint">Nhập mật khẩu admin rồi bấm tải để xem đơn mới nhất, trạng thái giao hàng và log giao dịch Sepay.</p>
-      <button class="btn-save" type="button" onclick="loadAdminOrders()">Tải đơn hàng</button>
-      <div class="traffic-grid" style="margin-top:14px">
-        <div class="traffic-card"><b id="orders-pending">-</b><span>Chờ thanh toán</span></div>
-        <div class="traffic-card"><b id="orders-paid">-</b><span>Đã nhận tiền</span></div>
-        <div class="traffic-card"><b id="orders-approved">-</b><span>Đã giao</span></div>
-        <div class="traffic-card"><b id="orders-rejected">-</b><span>Từ chối</span></div>
-      </div>
-      <h3 style="margin-top:18px">Đơn hàng mới nhất</h3>
-      <div class="admin-table-wrap" id="admin-orders-table"><p class="empty">Chưa tải dữ liệu.</p></div>
-      <h3 style="margin-top:18px">Log Sepay mới nhất</h3>
-      <div class="admin-table-wrap" id="sepay-log-table"><p class="empty">Chưa tải dữ liệu.</p></div>
-    </div>
-
-    <div class="panel">
-      <h2 id="form-title">Thêm khóa học mới</h2>
-      <input type="hidden" id="f-id" value="">
-
-      <label for="f-title">Tên khóa học *</label>
-      <input id="f-title" placeholder="Vd: Tiếng Anh Giao Tiếp">
-
-      <label for="f-image">Image address (dán link ảnh) *</label>
-      <div class="row-img">
-        <input id="f-image" placeholder="https://... .jpg" oninput="updatePreview()">
-        <div class="preview"><img id="f-preview" src="https://placehold.co/600x340/1f1812/ff9e2c?text=ANH" alt=""></div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label for="f-type">Loại nội dung</label>
-          <select id="f-type" onchange="toggleContentFields()">
-            <option value="course">Khóa học</option>
-            <option value="model">Model miễn phí</option>
-            <option value="addon">Addon miễn phí</option>
-            <option value="account">Tài khoản</option>
-          </select>
-        </div>
-        <div id="download-field" hidden>
-          <label for="f-download">Link tải file *</label>
-          <input id="f-download" type="url" placeholder="https://drive.google.com/...">
-        </div>
-      </div>
-
-      <div class="row" id="progress-fields">
-        <div>
-          <label for="f-status">Trạng thái</label>
-          <select id="f-status">
-            <option value="doing">Đang làm</option>
-            <option value="pending">Chờ làm</option>
-            <option value="done">Đã xong</option>
-          </select>
-        </div>
-        <div>
-          <label for="f-progress">Tiến độ (%)</label>
-          <input id="f-progress" type="number" min="0" max="100" value="0">
-        </div>
-      </div>
-
-      <label for="f-eta">Thời gian dự kiến</label>
-      <input id="f-eta" placeholder="Vd: 20/06/2026">
-
-      <label for="f-description">Mô tả khóa học</label>
-      <textarea id="f-description" placeholder="Nội dung chính, đối tượng phù hợp..."></textarea>
-
-      <label for="f-official">Website chính thống của tác giả</label>
-      <input id="f-official" type="url" placeholder="https://...">
-
-      <div class="row" id="commerce-fields">
-        <div>
-          <label for="f-price">Giá bán (VNĐ)</label>
-          <input id="f-price" type="number" min="0" step="1000" placeholder="499000">
-        </div>
-        <div id="drive-field">
-          <label for="f-drive">Google Drive folder ID</label>
-          <input id="f-drive" placeholder="Để trống nếu chưa giao tự động">
-        </div>
-      </div>
-      <label id="sale-field"><input id="f-sale" type="checkbox">Cho phép đặt mua sản phẩm này</label>
-      <label id="free-field"><input id="f-free" type="checkbox" onchange="toggleContentFields()">Phát hành khóa học miễn phí</label>
-      <div id="free-link-field" hidden>
-        <label for="f-free-url">Link truy cập khóa học miễn phí *</label>
-        <input id="f-free-url" type="url" placeholder="https://drive.google.com/...">
-      </div>
-      <p class="hint" id="sale-hint" style="margin:8px 0 16px">Folder ID chỉ được gửi lên server. Nếu khóa học đã có folder, để trống ô này sẽ giữ nguyên cấu hình cũ.</p>
-
-      <div class="btns">
-        <button class="btn-primary" type="button" onclick="submitForm()">Lưu khóa học</button>
-        <button class="btn-ghost" type="button" onclick="resetForm()">Làm mới form</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2>Danh sách khóa học (<span id="count">3</span>)</h2>
-      <div class="bar">
-        <button class="btn-save" type="button" onclick="exportData()">Tải lại từ server</button>
-        <button class="btn-ghost" type="button" onclick="resetAll()">Khôi phục dữ liệu gốc</button>
-      </div>
-      <p class="hint" style="margin-bottom:18px">
-        Mọi thay đổi được lưu thẳng lên server, ai mở web cũng thấy ngay. Nhớ nhập <b>mật khẩu quản trị</b> ở trên trước khi lưu.
-      </p>
-      <div id="list">
-        <div class="item">
-          <img class="ph" src="https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
-          <div class="info">
-            <h4>Alive! Animation course in Blender</h4>
-            <div class="m">
-              <span class="pill done">Đã xong</span>
-              <span>100%</span>
-              <span>-</span>
+        <div class="discord-window" aria-label="Minh họa trải nghiệm nhận bài học qua Discord">
+          <div class="window-bar"><div class="dots"><i></i><i></i><i></i></div><span>discord / nixart</span></div>
+          <div class="window-body">
+            <div class="server-rail"><div class="server-icon active">NX</div><div class="server-icon muted">+</div><div class="server-icon muted">⌕</div></div>
+            <div class="chat">
+              <div class="chat-head">bắt-đầu-học</div>
+              <div class="messages">
+                <div class="message">
+                  <div class="avatar">B</div>
+                  <div><strong>Bạn <small>20:08</small></strong><p>Mình muốn xem bài tiếp theo.</p></div>
+                </div>
+                <div class="message">
+                  <div class="avatar bot">NX</div>
+                  <div><strong>Nixart Bot <small>20:08</small></strong><p>Quyền học đã được xác nhận. Nhấn vào đường dẫn bên dưới để bắt đầu nhé.</p><div class="course-link">▶ Mở bài học trên Nixart</div></div>
+                </div>
+              </div>
+              <div class="chat-input">Nhắn tin cho Nixart...</div>
             </div>
           </div>
-          <div class="acts">
-            <button class="btn-ghost" type="button" onclick="editCourse(0)">Sửa</button>
-            <button class="btn-danger" type="button" onclick="deleteCourse(0)">Xóa</button>
-          </div>
+          <div class="float-tag">Đã cấp quyền ✓</div>
         </div>
-        <div class="item">
-          <img class="ph" src="https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
-          <div class="info">
-            <h4>The Art of Effective Rigging 2</h4>
-            <div class="m">
-              <span class="pill doing">Đang làm</span>
-              <span>65%</span>
-              <span>-</span>
-            </div>
-          </div>
-          <div class="acts">
-            <button class="btn-ghost" type="button" onclick="editCourse(1)">Sửa</button>
-            <button class="btn-danger" type="button" onclick="deleteCourse(1)">Xóa</button>
-          </div>
-        </div>
-        <div class="item">
-          <img class="ph" src="https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
-          <div class="info">
-            <h4>70 Exercises for Perfecting Stylized Character Creation</h4>
-            <div class="m">
-              <span class="pill doing">Đang làm</span>
-              <span>10%</span>
-              <span>-</span>
-            </div>
-          </div>
-          <div class="acts">
-            <button class="btn-ghost" type="button" onclick="editCourse(2)">Sửa</button>
-            <button class="btn-danger" type="button" onclick="deleteCourse(2)">Xóa</button>
-          </div>
-        </div></div>
-    </div>
-  </div>
-</section>
+      </div>
+    </section>
 
-<div class="modal" id="order-modal" role="dialog" aria-modal="true" aria-labelledby="order-title">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div><h2 id="order-title">Thanh toán sản phẩm</h2><p id="order-course"></p></div>
-      <button class="modal-close" type="button" onclick="closeOrder()" aria-label="Đóng">×</button>
-    </div>
-    <div class="payment-box" id="order-payment" hidden>
-      <img id="order-qr" alt="QR chuyển khoản">
-      <div class="payment-details">
-        <p>Ngân hàng<strong id="order-bank"></strong></p>
-        <p>Số tài khoản<strong id="order-account"></strong></p>
-        <p>Chủ tài khoản<strong id="order-account-name"></strong></p>
-        <p>Số tiền<strong id="order-amount"></strong></p>
-        <p>Nội dung chuyển khoản<code id="order-code"></code></p>
+    <div class="trust">
+      <div class="shell trust-grid">
+        <p>Một luồng học đơn giản, rõ ràng:</p>
+        <div class="trust-item"><strong>01 · Chọn</strong><p>Trong Discord</p></div>
+        <div class="trust-item"><strong>02 · Thanh toán</strong><p>Mua lẻ hoặc theo tháng</p></div>
+        <div class="trust-item"><strong>03 · Học</strong><p>Trực tiếp trên web</p></div>
       </div>
     </div>
-    <p class="order-note" id="order-note">Nhập thông tin nhận hàng để tạo mã QR thanh toán.</p>
-    <form id="order-form">
-      <input id="order-course-id" type="hidden">
-      <label for="order-email">Email nhận hàng *</label>
-      <input id="order-email" type="email" required placeholder="you@gmail.com" autocomplete="email">
-      <label for="order-payer">Tên người chuyển khoản *</label>
-      <input id="order-payer" required maxlength="200" placeholder="Tên hiển thị trong giao dịch">
-      <label for="order-reference">Mã giao dịch / ghi chú</label>
-      <input id="order-reference" maxlength="200" placeholder="Không bắt buộc">
-      <button class="btn-primary" id="order-submit" type="submit">Tạo đơn và mã QR</button>
-    </form>
-  </div>
-</div>
 
-<div class="modal" id="product-detail-modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
-  <div class="modal-box" style="max-width:620px">
-    <div class="modal-head"><h2 id="product-detail-title"></h2><button class="modal-close" type="button" onclick="closeProductDetail()" aria-label="Đóng">×</button></div>
-    <img class="product-detail-image" id="product-detail-image" alt="">
-    <p class="product-detail-description" id="product-detail-description"></p>
-    <div class="sale-row"><span class="price" id="product-detail-price"></span><button class="btn-primary" id="product-detail-buy" type="button">Mua tài khoản</button></div>
-  </div>
-</div>
-
-<div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-  <div class="modal-box" style="max-width:440px">
-    <div class="modal-head"><h2 id="auth-title">Tài khoản Nixart</h2><button class="modal-close" type="button" onclick="closeAuth()" aria-label="Đóng">×</button></div>
-    <p class="order-note">Đăng nhập hoặc tạo tài khoản để mua và theo dõi đơn tài khoản.</p>
-    <label for="auth-user-email">Email</label>
-    <input id="auth-user-email" type="email" autocomplete="email" placeholder="you@example.com">
-    <label for="auth-password">Mật khẩu</label>
-    <input id="auth-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" placeholder="Tối thiểu 8 ký tự">
-    <div class="btns">
-      <button class="btn-primary" id="auth-login-submit" type="button" onclick="submitAuth('login')">Đăng nhập</button>
-      <button class="btn-ghost" id="auth-register-submit" type="button" onclick="submitAuth('register')">Tạo tài khoản</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="orders-modal" role="dialog" aria-modal="true" aria-labelledby="orders-title">
-  <div class="modal-box" style="max-width:720px">
-    <div class="modal-head"><h2 id="orders-title">Profile & đơn hàng</h2><button class="modal-close" type="button" onclick="closeMyOrders()" aria-label="Đóng">×</button></div>
-    <div class="lookup-box">
-      <h2>Tra cứu đơn hàng</h2>
-      <p>Nhập mã đơn NIX để xem trạng thái nhận tiền / giao khóa học. Email sẽ tự dùng tài khoản đang đăng nhập.</p>
-      <div class="row">
-        <input id="lookup-code" placeholder="Mã đơn: NIX..." autocomplete="off">
-        <input id="lookup-email" type="email" placeholder="Email nhận khóa học" readonly>
+    <section id="cach-hoc">
+      <div class="shell">
+        <div class="section-head"><p class="eyebrow">Cách bắt đầu</p><h2>Từ Discord đến bài học trong ba bước.</h2><p>Discord là nơi bạn chọn nội dung và nhận hỗ trợ. Website này là phòng học riêng sau khi quyền truy cập được xác nhận.</p></div>
+        <div class="steps">
+          <article class="step"><div class="step-icon">#</div><h3>Tham gia cộng đồng</h3><p>Vào máy chủ Discord Nixart và làm theo hướng dẫn tại kênh bắt đầu.</p></article>
+          <article class="step"><div class="step-icon">₫</div><h3>Chọn cách học</h3><p>Mua một khóa để sở hữu riêng hoặc đăng ký gói tháng phù hợp nhu cầu.</p></article>
+          <article class="step"><div class="step-icon">▶</div><h3>Nhận bài và xem</h3><p>Chọn khóa, chọn bài trong bot. Bot gửi liên kết để bạn xem trực tiếp trên web.</p></article>
+        </div>
       </div>
-      <button class="btn-ghost" type="button" onclick="lookupOrder()">Kiểm tra đơn</button>
-      <div class="lookup-result" id="lookup-result" hidden></div>
-    </div>
-    <div class="orders-list" id="orders-list"><p class="empty">Đang tải...</p></div>
-  </div>
-</div>
+    </section>
 
-<div class="support-bubble">
-  <strong>Cần xem preview?</strong>
-  <p>Xem previews trước khi mua, liên hệ qua Discord để mình gửi mẫu khóa học.</p>
-  <a id="support-discord-link" href="#" onclick="showPreviewSupport(); return false;">Discord</a>
-</div>
-<button class="support-float" type="button" onclick="showPreviewSupport()">Preview?</button>
-<div class="toast" id="toast">Đã cập nhật</div>
+    <section class="pricing-wrap" id="goi-hoc">
+      <div class="shell">
+        <div class="section-head"><p class="eyebrow">Gói theo tháng</p><h2>Học theo nhịp của bạn.</h2><p>Quyền truy cập kéo dài 30 ngày kể từ khi được kích hoạt. Có thể mua hoặc gia hạn trực tiếp trong Discord.</p></div>
+        <div class="pricing" id="plans" aria-live="polite"></div>
+        <p class="pricing-note">Bạn không cần gói tháng? Mua riêng từng khóa vẫn luôn có sẵn trong Discord.</p>
+      </div>
+    </section>
 
-<script>
-  //__STATE_START__
-  const DEFAULT_STATE = {
-  "name": "VOICE STUDIO",
-  "tagline": "Dịch vụ lồng tiếng khóa học chuyên nghiệp",
-  "facebook": "https://www.facebook.com/profile.php?id=100086203440270",
-  "discord": "",
-  "bankBin": "970422",
-  "bankAccount": "0965672650",
-  "bankAccountName": "VU THANH AN",
-  "courses": [
-    {
-      "id": "alive-animation-course-1",
-      "title": "Alive! Animation course in Blender",
-      "image": "https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=1920,fit=crop/YBg7gMxqvRhvP1ZO/alive-course-cover-AoPWPyJ4Nai0RWpJ.jpg",
-      "description": "",
-      "price": 0,
-      "saleEnabled": false,
-      "status": "done",
-      "progress": 100,
-      "eta": ""
-    },
-    {
-      "id": "art-effective-rigging-2",
-      "title": "The Art of Effective Rigging 2",
-      "image": "https://uploads.teachablecdn.com/attachments/y5EoR7jASBfIEgFv7CT3_AOER%C2%B2_All_Characters.jpg",
-      "description": "",
-      "price": 0,
-      "saleEnabled": false,
-      "status": "doing",
-      "progress": 65,
-      "eta": ""
-    },
-    {
-      "id": "stylized-character-exercises-3",
-      "title": "70 Exercises for Perfecting Stylized Character Creation",
-      "image": "https://i.ytimg.com/vi/S_TJ6zSkdmc/maxresdefault.jpg",
-      "description": "",
-      "price": 0,
-      "saleEnabled": false,
-      "status": "doing",
-      "progress": 10,
-      "eta": ""
+    <section id="khoa-hoc">
+      <div class="shell">
+        <div class="section-head"><p class="eyebrow">Mua riêng từng khóa</p><h2>Chỉ chọn đúng thứ bạn cần.</h2><p>Các khóa đang mở sẽ xuất hiện tại đây. Chi tiết chương trình và thao tác mua được thực hiện trong bot Discord.</p></div>
+        <div class="courses-grid" id="courses" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell faq-grid">
+        <div class="faq-copy"><p class="eyebrow">Câu hỏi thường gặp</p><h2>Trước khi bắt đầu.</h2></div>
+        <div>
+          <details open><summary>Tại sao Nixart chuyển sang Discord?</summary><p>Discord giúp cộng đồng, tư vấn, hỗ trợ và quản lý quyền học nằm ở cùng một nơi. Phần video vẫn được xem trực tiếp trên website.</p></details>
+          <details><summary>Mua riêng và gói tháng khác nhau thế nào?</summary><p>Mua riêng cấp quyền cho khóa đã chọn. Gói tháng cấp quyền theo phạm vi của gói trong 30 ngày và thuận tiện khi bạn muốn học nhiều nội dung.</p></details>
+          <details><summary>Tôi nhận bài học bằng cách nào?</summary><p>Sau khi quyền được xác nhận, chọn khóa và bài trong bot Discord. Bot sẽ gửi liên kết riêng dẫn tới trang xem bài.</p></details>
+          <details><summary>Có tải video về máy được không?</summary><p>Nội dung được cung cấp để xem trực tuyến. Bạn cần đăng nhập tài khoản đã được cấp quyền để mở bài học.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta" id="tham-gia">
+      <div class="shell">
+        <div class="cta-box"><p class="eyebrow" style="color:var(--lime)">Cánh cửa mới</p><h2>Sẵn sàng chọn bài học tiếp theo?</h2><p>Gặp cộng đồng Nixart trên Discord, chọn hình thức phù hợp và bắt đầu học ngay trên website.</p><a class="button" data-discord href="#tham-gia">Mở Discord →</a></div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="shell"><p>© <span id="year"></span> <span data-brand>Nixart</span>. All rights reserved.</p><p>Discord để kết nối · Website để học tập</p></div></footer>
+
+  <script>
+    const fallback = {
+      name: "Nixart",
+      tagline: "Cộng đồng, tư vấn khóa học và thanh toán giờ đây diễn ra trên Discord. Sau khi được cấp quyền, bạn vẫn xem bài trực tiếp và riêng tư trên website.",
+      discordUrl: "https://discord.gg/B8ZXSNdVaR",
+      plans: [
+        { name: "Cơ bản", price: 200000, description: "Bắt đầu gọn nhẹ với nhóm nội dung nền tảng.", features: ["Truy cập các khóa thuộc gói Cơ bản", "Xem trực tiếp trên website", "Hỗ trợ trong cộng đồng Discord"] },
+        { name: "Toàn bộ", price: 500000, description: "Mở toàn bộ thư viện khóa học hiện có.", features: ["Truy cập tất cả khóa học", "Nội dung mới trong thời hạn gói", "Ưu tiên hỗ trợ trong Discord"], featured: true }
+      ],
+      courses: []
+    };
+
+    const money = value => {
+      if (typeof value === "string" && /[^\d]/.test(value)) return value;
+      const number = Number(value);
+      return Number.isFinite(number) ? new Intl.NumberFormat("vi-VN").format(number) + "đ" : "Liên hệ";
+    };
+
+    let activeDiscordUrl = "";
+
+    function configureDiscordLink(link) {
+      if (activeDiscordUrl) {
+        link.href = activeDiscordUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.removeAttribute("aria-disabled");
+        link.onclick = null;
+      } else {
+        link.href = "#tham-gia";
+        link.removeAttribute("target");
+        link.setAttribute("aria-disabled", "true");
+        link.title = "Discord chưa được cấu hình";
+        link.onclick = event => event.preventDefault();
+      }
     }
-  ]
-};
-  //__STATE_END__
-</script>
-<script>
-  const LABELS = { doing: "Đang làm", pending: "Chờ làm", done: "Đã xong" };
-  const ORDER = { doing: 0, pending: 1, done: 2 };
-  const FALLBACK_IMAGE = "https://placehold.co/600x340/1f1812/ff9e2c?text=KHOA+HOC";
-  const PREVIEW_IMAGE = "https://placehold.co/600x340/1f1812/ff9e2c?text=ANH";
 
-  const API_URL = "/api/state";
-  const TRAFFIC_URL = "/api/traffic";
-  const ORDER_LOOKUP_URL = "/api/order-lookup";
-  const ADMIN_ORDERS_URL = "/api/admin-orders";
-  let state = cloneDefaultState();
-  let brandClicks = 0;
-  let brandTimer = null;
-  let currentPurchaseCode = "";
-  let activeCatalog = "learning";
-  let authUser = null;
-  let ordersTimer = null;
+    function setDiscord(url) {
+      activeDiscordUrl = /^https:\/\//i.test(String(url || "")) ? String(url) : "";
+      document.querySelectorAll("[data-discord]").forEach(configureDiscordLink);
+    }
 
-  function initParticles() {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const canvas = document.getElementById("particle-bg");
-    const ctx = canvas.getContext("2d");
-    const mouse = { x: innerWidth / 2, y: innerHeight / 2, active: false };
-    let particles = [];
-    let w = 0;
-    let h = 0;
-    let dpr = 1;
+    function renderPlans(plans) {
+      const list = Array.isArray(plans) && plans.length ? plans : fallback.plans;
+      const root = document.querySelector("#plans");
+      root.replaceChildren(...list.slice(0, 4).map((item, index) => {
+        const article = document.createElement("article");
+        const featured = Boolean(item.featured ?? item.popular ?? index === list.length - 1);
+        article.className = "plan" + (featured ? " featured" : "");
 
-    function resize() {
-      dpr = Math.min(devicePixelRatio || 1, 2);
-      w = canvas.width = Math.floor(innerWidth * dpr);
-      h = canvas.height = Math.floor(innerHeight * dpr);
-      canvas.style.width = innerWidth + "px";
-      canvas.style.height = innerHeight + "px";
-      const count = Math.min(72, Math.max(28, Math.floor(innerWidth / 24)));
-      particles = Array.from({ length: count }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - .5) * .14 * dpr,
-        vy: (Math.random() - .5) * .14 * dpr,
-        baseVx: (Math.random() - .5) * .14 * dpr,
-        baseVy: (Math.random() - .5) * .14 * dpr,
-        r: (Math.random() * 1.7 + .8) * dpr
+        if (featured) {
+          const badge = document.createElement("span");
+          badge.className = "plan-badge";
+          badge.textContent = "Đầy đủ nhất";
+          article.append(badge);
+        }
+
+        const title = document.createElement("h3");
+        title.textContent = item.name || item.title || `Gói ${index + 1}`;
+        const description = document.createElement("p");
+        description.className = "plan-desc";
+        description.textContent = item.description || "Quyền truy cập được kích hoạt trong 30 ngày.";
+        const price = document.createElement("div");
+        price.className = "price";
+        price.append(document.createTextNode(money(item.price)));
+        const suffix = document.createElement("small");
+        suffix.textContent = "/ 30 ngày";
+        price.append(suffix);
+        const features = document.createElement("ul");
+        features.className = "features";
+        const featureList = Array.isArray(item.features) && item.features.length ? item.features : ["Xem bài trực tiếp trên website", "Nhận bài và hỗ trợ qua Discord"];
+        featureList.slice(0, 5).forEach(text => {
+          const li = document.createElement("li");
+          li.textContent = text;
+          features.append(li);
+        });
+        const button = document.createElement("a");
+        button.className = "button";
+        configureDiscordLink(button);
+        button.textContent = "Chọn gói trong Discord";
+        article.append(title, description, price, features, button);
+        return article;
       }));
     }
 
-    function frame() {
-      ctx.clearRect(0, 0, w, h);
-      for (const p of particles) {
-        const dx = p.x - mouse.x * dpr;
-        const dy = p.y - mouse.y * dpr;
-        const dist = Math.hypot(dx, dy) || 1;
-        if (mouse.active && dist < 170 * dpr) {
-          const force = (1 - dist / (170 * dpr)) * .08 * dpr;
-          p.vx += (dx / dist) * force;
-          p.vy += (dy / dist) * force;
-        }
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vx = p.vx * .985 + p.baseVx * .015;
-        p.vy = p.vy * .985 + p.baseVy * .015;
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h) p.vy *= -1;
-        ctx.beginPath();
-        ctx.fillStyle = "rgba(244,244,245,.58)";
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
+    function renderCourses(courses) {
+      const root = document.querySelector("#courses");
+      if (!Array.isArray(courses) || !courses.length) {
+        const article = document.createElement("article");
+        article.className = "course empty-course";
+        const title = document.createElement("h3");
+        title.textContent = "Danh mục khóa học được cập nhật trong Discord";
+        const text = document.createElement("p");
+        text.textContent = "Vào bot Nixart để xem nội dung đang mở và chọn mua từng khóa.";
+        const link = document.createElement("a");
+        configureDiscordLink(link);
+        link.textContent = "Xem trong Discord →";
+        article.append(title, text, link);
+        root.replaceChildren(article);
+        return;
       }
-      requestAnimationFrame(frame);
+
+      root.replaceChildren(...courses.slice(0, 9).map((item, index) => {
+        const article = document.createElement("article");
+        article.className = "course";
+        const top = document.createElement("div");
+        top.className = "course-top";
+        const label = document.createElement("span");
+        label.className = "course-label";
+        label.textContent = item.category || item.level || "Khóa học";
+        const price = document.createElement("span");
+        price.className = "course-price";
+        price.textContent = money(item.price);
+        top.append(label, price);
+        const title = document.createElement("h3");
+        title.textContent = item.name || item.title || `Khóa học ${index + 1}`;
+        const text = document.createElement("p");
+        text.textContent = item.description || "Xem chi tiết nội dung và các bài học trong Discord.";
+        const link = document.createElement("a");
+        configureDiscordLink(link);
+        link.textContent = "Chọn khóa trong Discord →";
+        article.append(top, title, text, link);
+        return article;
+      }));
     }
 
-    addEventListener("resize", resize);
-    addEventListener("mousemove", event => {
-      mouse.x = event.clientX;
-      mouse.y = event.clientY;
-      mouse.active = true;
-    });
-    addEventListener("mouseleave", () => { mouse.active = false; });
-    resize();
-    frame();
-  }
-
-  function cloneDefaultState() {
-    return JSON.parse(JSON.stringify(DEFAULT_STATE));
-  }
-
-  // Doc du lieu tu server (Neon) khi mo trang
-  async function loadState() {
-    try {
-      const response = await fetch(API_URL, { cache: "no-store" });
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
-      if (data && Array.isArray(data.courses)) {
-        state = {
-          name: data.name || DEFAULT_STATE.name,
-          tagline: data.tagline || DEFAULT_STATE.tagline,
-          facebook: data.facebook || "",
-          discord: data.discord || "",
-          bankBin: data.bankBin || "",
-          bankAccount: data.bankAccount || "",
-          bankAccountName: data.bankAccountName || "",
-          courses: data.courses
-        };
+    async function loadCatalog() {
+      let catalog = fallback;
+      try {
+        const response = await fetch("/api/catalog", { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error("Catalog unavailable");
+        catalog = { ...fallback, ...await response.json() };
+      } catch (_) {
+        // ponytail: static fallback keeps this landing page useful during API downtime.
       }
-    } catch (error) {
-      // Mat ket noi -> hien du lieu goc de trang khong trong
-      state = cloneDefaultState();
-      console.error("Khong tai duoc du lieu:", error);
-    }
-  }
 
-  function visitorId() {
-    const key = "nixart_visitor_id";
-    let id = localStorage.getItem(key);
-    if (!id) {
-      id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-      localStorage.setItem(key, id);
-    }
-    return id;
-  }
-
-  async function trackVisit() {
-    if (sessionStorage.getItem("nixart_visit_tracked")) return;
-    sessionStorage.setItem("nixart_visit_tracked", "1");
-    try {
-      await fetch(TRAFFIC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visitorId: visitorId(), path: location.pathname || "/" })
-      });
-    } catch (_) {}
-  }
-
-  async function loadTraffic() {
-    try {
-      const response = await fetch(TRAFFIC_URL, { cache: "no-store" });
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
-      document.getElementById("traffic-total").textContent = Number(data.total || 0).toLocaleString("vi-VN");
-      document.getElementById("traffic-today").textContent = Number(data.today || 0).toLocaleString("vi-VN");
-      document.getElementById("traffic-week").textContent = Number(data.week || 0).toLocaleString("vi-VN");
-      document.getElementById("traffic-online").textContent = Number(data.online || 0).toLocaleString("vi-VN");
-    } catch (_) {}
-  }
-
-  function formatDate(value) {
-    if (!value) return "-";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("vi-VN");
-  }
-
-  async function lookupOrder() {
-    const resultBox = document.getElementById("lookup-result");
-    const code = document.getElementById("lookup-code").value.trim().toUpperCase();
-    const email = document.getElementById("lookup-email").value.trim().toLowerCase();
-    resultBox.hidden = false;
-    resultBox.textContent = "Đang kiểm tra...";
-    try {
-      const params = new URLSearchParams({ code, email });
-      const response = await fetch(`${ORDER_LOOKUP_URL}?${params}`, { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không tra cứu được đơn");
-      const order = data.order;
-      resultBox.innerHTML = `
-        <strong>${esc(order.course_title)}</strong>
-        <div>Mã đơn: <code>${esc(order.purchase_code)}</code></div>
-        <div>Số tiền: ${formatPrice(order.amount)}</div>
-        <div>Trạng thái: <span class="status-pill">${esc(order.status_text)}</span></div>
-        <div>Tạo lúc: ${esc(formatDate(order.created_at))}</div>
-        ${order.reviewed_at ? `<div>Cập nhật: ${esc(formatDate(order.reviewed_at))}</div>` : ""}
-      `;
-    } catch (error) {
-      resultBox.innerHTML = `<strong>Không tìm thấy</strong>${esc(error.message || "Vui lòng kiểm tra mã đơn và email.")}`;
-    }
-  }
-
-  function statusCounts(summary) {
-    return Object.fromEntries((summary || []).map(row => [row.status, Number(row.count || 0)]));
-  }
-
-  function adminOrderRows(orders) {
-    if (!orders?.length) return `<p class="empty">Chưa có đơn hàng.</p>`;
-    return `<table class="admin-table"><thead><tr>
-      <th>Mã</th><th>Sản phẩm</th><th>Email</th><th>Số tiền</th><th>Trạng thái</th><th>Giao hàng</th><th>Tạo lúc</th>
-    </tr></thead><tbody>${orders.map(order => `<tr>
-      <td><code>${esc(order.purchase_code)}</code></td>
-      <td>${esc(order.course_title)}<br><small>${esc(order.payer_name || "")}</small></td>
-      <td>${esc(order.email)}</td>
-      <td>${formatPrice(order.amount)}</td>
-      <td><span class="status-pill">${esc(order.status)}</span></td>
-      <td>${order.delivery_type === "manual" ? "Tài khoản thủ công" : "Google Drive"}</td>
-      <td>${esc(formatDate(order.created_at))}</td>
-    </tr>`).join("")}</tbody></table>`;
-  }
-
-  function sepayLogRows(logs) {
-    if (!logs?.length) return `<p class="empty">Chưa có log Sepay.</p>`;
-    return `<table class="admin-table"><thead><tr>
-      <th>Giao dịch</th><th>Mã đơn</th><th>Reference</th><th>Số tiền</th><th>Kết quả</th><th>Nhận lúc</th>
-    </tr></thead><tbody>${logs.map(log => `<tr>
-      <td><code>${esc(log.id)}</code></td>
-      <td><code>${esc(log.purchase_code || "-")}</code></td>
-      <td>${esc(log.reference_code || "-")}</td>
-      <td>${formatPrice(log.amount)}</td>
-      <td><span class="status-pill">${esc(log.match_status || "received")}</span></td>
-      <td>${esc(formatDate(log.created_at))}</td>
-    </tr>`).join("")}</tbody></table>`;
-  }
-
-  async function loadAdminOrders() {
-    const password = document.getElementById("admin-pass").value;
-    if (!password) { toast("Nhập mật khẩu admin trước"); return; }
-    try {
-      const response = await fetch(ADMIN_ORDERS_URL, {
-        cache: "no-store",
-        headers: { "x-admin-password": password }
-      });
-      const data = await response.json();
-      if (response.status === 401) { toast("Sai mật khẩu admin"); return; }
-      if (!response.ok) throw new Error(data.error || "Không tải được đơn hàng");
-      const counts = statusCounts(data.summary);
-      document.getElementById("orders-pending").textContent = Number(counts.pending || 0).toLocaleString("vi-VN");
-      document.getElementById("orders-paid").textContent = Number(counts.paid || 0).toLocaleString("vi-VN");
-      document.getElementById("orders-approved").textContent = Number(counts.approved || 0).toLocaleString("vi-VN");
-      document.getElementById("orders-rejected").textContent = Number(counts.rejected || 0).toLocaleString("vi-VN");
-      document.getElementById("admin-orders-table").innerHTML = adminOrderRows(data.orders);
-      document.getElementById("sepay-log-table").innerHTML = sepayLogRows(data.logs);
-      toast("Đã tải đơn hàng");
-    } catch (error) {
-      toast(error.message || "Không tải được đơn hàng");
-    }
-  }
-
-  // Ghi du lieu len server. Tra ve true neu thanh cong.
-  async function persist() {
-    const password = document.getElementById("admin-pass").value;
-    if (!password) { toast("Nhập mật khẩu quản trị trước"); return false; }
-    try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-password": password
-        },
-        body: JSON.stringify(state)
-      });
-      if (response.status === 401) { toast("Sai mật khẩu quản trị"); return false; }
-      if (!response.ok) { toast("Lưu thất bại, thử lại"); return false; }
-      return true;
-    } catch (error) {
-      toast("Mất kết nối, lưu thất bại");
-      return false;
-    }
-  }
-
-  function esc(value) {
-    return String(value ?? "").replace(/[&<>"']/g, char => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[char]));
-  }
-
-  function clampProgress(value) {
-    const number = parseInt(value, 10);
-    if (Number.isNaN(number)) return 0;
-    return Math.max(0, Math.min(100, number));
-  }
-
-  function normalizeStatus(status) {
-    return Object.prototype.hasOwnProperty.call(LABELS, status) ? status : "pending";
-  }
-
-  function renderDeliveryContent(value) {
-    return String(value || "").split(/\r?\n/).filter(line => line.trim()).map(line => {
-      const content = line.split(/(https?:\/\/[^\s]+)/g).map(part => /^https?:\/\//i.test(part)
-        ? `<a href="${esc(part)}" target="_blank" rel="noopener noreferrer">${esc(part)}</a>`
-        : esc(part)).join("");
-      return `<div class="delivery-line"><span>${content}</span><button class="delivery-copy" type="button" data-copy="${esc(line)}" onclick="copyDelivery(this)">Copy</button></div>`;
-    }).join("");
-  }
-
-  async function copyDelivery(button) {
-    try {
-      await navigator.clipboard.writeText(button.dataset.copy || "");
-      toast("Đã copy");
-    } catch (_) {
-      toast("Không copy được");
-    }
-  }
-
-  async function initAuth() {
-    try {
-      const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
-      const data = await response.json();
-      authUser = data.user || null;
-      renderAuthState();
-      const pendingId = localStorage.getItem("pendingAccountCourse");
-      if (authUser && pendingId) {
-        localStorage.removeItem("pendingAccountCourse");
-        setTimeout(() => openOrder(pendingId), 0);
-      }
-    } catch (error) {
-      console.error("Khong khoi tao duoc dang nhap:", error);
-    }
-  }
-
-  function renderAuthState() {
-    const signedIn = Boolean(authUser);
-    document.getElementById("auth-login").hidden = signedIn;
-    document.getElementById("auth-orders").hidden = !signedIn;
-    document.getElementById("auth-logout").hidden = !signedIn;
-    const email = document.getElementById("auth-email");
-    email.hidden = !signedIn;
-    email.textContent = signedIn ? authUser.email : "";
-  }
-
-  function openAuth() {
-    document.getElementById("auth-modal").classList.add("open");
-  }
-
-  function closeAuth() { document.getElementById("auth-modal").classList.remove("open"); }
-
-  async function submitAuth(action) {
-    const email = document.getElementById("auth-user-email").value.trim();
-    const password = document.getElementById("auth-password").value;
-    if (!email || password.length < 8) { toast("Nhập email và mật khẩu tối thiểu 8 ký tự"); return; }
-    const loginButton = document.getElementById("auth-login-submit");
-    const registerButton = document.getElementById("auth-register-submit");
-    loginButton.disabled = registerButton.disabled = true;
-    try {
-      const response = await fetch("/api/auth", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, email, password })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không đăng nhập được");
-      authUser = data.user;
-      renderAuthState();
-      closeAuth();
-      document.getElementById("auth-password").value = "";
-      toast(action === "register" ? "Đã tạo tài khoản" : "Đã đăng nhập");
-      const pendingId = localStorage.getItem("pendingAccountCourse");
-      if (pendingId) {
-        localStorage.removeItem("pendingAccountCourse");
-        openOrder(pendingId);
-      }
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      loginButton.disabled = registerButton.disabled = false;
-    }
-  }
-
-  async function signOutUser() {
-    await fetch("/api/auth", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "logout" })
-    });
-    authUser = null;
-    renderAuthState();
-  }
-
-  function closeMyOrders() {
-    clearTimeout(ordersTimer);
-    document.getElementById("orders-modal").classList.remove("open");
-  }
-
-  async function openMyOrders() {
-    if (!authUser) { openAuth(); return; }
-    const modal = document.getElementById("orders-modal");
-    const list = document.getElementById("orders-list");
-    const firstLoad = !modal.classList.contains("open");
-    clearTimeout(ordersTimer);
-    modal.classList.add("open");
-    document.getElementById("lookup-email").value = authUser.email || "";
-    if (firstLoad) list.innerHTML = `<p class="empty">Đang tải...</p>`;
-    try {
-      const response = await fetch("/api/orders", { credentials: "same-origin" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không tải được đơn hàng");
-      const labels = { pending: "Chờ duyệt", processing: "Đang xử lý", approved: "Đã thanh toán", rejected: "Bị từ chối" };
-      list.innerHTML = data.orders.length ? data.orders.map(order => `
-        <div class="order-item"><strong>${esc(order.course_title)}</strong>
-          <span>${esc(order.purchase_code)} · ${formatPrice(order.amount)} · ${labels[order.status] || esc(order.status)}</span>
-          ${order.status === "approved" && order.delivery_content ? `<div class="delivery-box">${renderDeliveryContent(order.delivery_content)}</div>` : ""}
-        </div>`).join("") : `<p class="empty">Bạn chưa có đơn tài khoản nào.</p>`;
-    } catch (error) {
-      list.innerHTML = `<p class="empty">${esc(error.message)}</p>`;
-    } finally {
-      if (modal.classList.contains("open")) ordersTimer = setTimeout(openMyOrders, 5000);
-    }
-  }
-
-  function formatPrice(value) {
-    return `${Math.max(0, Number(value) || 0).toLocaleString("vi-VN")} đ`;
-  }
-
-  function normalizeContentType(value) {
-    return ["model", "addon", "account"].includes(value) ? value : "course";
-  }
-
-  function directDownloadUrl(value) {
-    const url = String(value || "").trim();
-    const driveFile = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (driveFile) return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFile[1])}`;
-    return url;
-  }
-
-  function setBrandText(element, value) {
-    const text = String(value || "VOICE STUDIO").trim() || "VOICE STUDIO";
-    const parts = text.split(/\s+/);
-    element.textContent = "";
-    if (parts.length === 1) {
-      const span = document.createElement("span");
-      span.textContent = parts[0];
-      element.append(span);
-      return;
-    }
-    element.append(document.createTextNode(parts[0] + " "));
-    const span = document.createElement("span");
-    span.textContent = parts.slice(1).join(" ");
-    element.append(span);
-  }
-
-  function renderPublic() {
-    setBrandText(document.getElementById("brand"), state.name);
-    document.getElementById("tagline").textContent = state.tagline || "";
-    const supportLink = document.getElementById("support-discord-link");
-    const discord = String(state.discord || "").trim();
-    supportLink.href = /^https:\/\//i.test(discord) ? discord : "#";
-
-    const visible = state.courses.filter(course => {
-      const isAccount = normalizeContentType(course.contentType) === "account";
-      return activeCatalog === "accounts" ? isAccount : !isAccount;
-    });
-    const sorted = visible.sort((a, b) => {
-      return (ORDER[normalizeStatus(a.status)] ?? 9) - (ORDER[normalizeStatus(b.status)] ?? 9);
-    });
-
-    document.getElementById("grid").innerHTML = sorted.length
-      ? sorted.map(courseCard).join("")
-      : `<p class="empty">Chưa có sản phẩm trong danh mục này.</p>`;
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        document.querySelectorAll(".fill").forEach(fill => {
-          fill.style.width = fill.dataset.w + "%";
-        });
-      }, 200);
-    });
-  }
-
-  function contactIcons(previewUrl = "") {
-    const fb = String(state.facebook || "").trim();
-    const dc = String(state.discord || "").trim();
-    const preview = String(previewUrl || "").trim();
-    if (!fb && !dc && !preview) return "";
-    const fbSvg = `<svg viewBox="0 0 24 24"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>`;
-    const dcSvg = `<svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.45 2.9a.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.25a18.3 18.3 0 0 0-5.5 0c-.16-.39-.4-.87-.61-1.25a.08.08 0 0 0-.08-.04c-1.7.3-3.33.8-4.87 1.47a.07.07 0 0 0-.03.03C.53 9.04-.32 13.58.1 18.06a.08.08 0 0 0 .03.06 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .09-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.11c-.65-.25-1.27-.55-1.87-.89a.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.64-1.87.89a.08.08 0 0 0-.04.11c.36.7.78 1.36 1.22 2a.08.08 0 0 0 .09.03 19.8 19.8 0 0 0 6-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.69-3.55-13.67a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>`;
-    let html = `<div class="contact">`;
-    if (fb) html += `<a class="fb" href="${esc(fb)}" target="_blank" rel="noopener" title="Facebook">${fbSvg}</a>`;
-    if (dc) html += `<a class="dc" href="${esc(dc)}" target="_blank" rel="noopener" title="Discord">${dcSvg}</a>`;
-    if (/^https:\/\//i.test(preview)) html += `<a class="preview" href="${esc(preview)}" target="_blank" rel="noopener noreferrer">Preview</a>`;
-    html += `</div>`;
-    return html;
-  }
-
-  function courseCard(course) {
-    const status = normalizeStatus(course.status);
-    const progress = clampProgress(course.progress);
-    const contentType = normalizeContentType(course.contentType);
-    const isFreeAsset = contentType === "model" || contentType === "addon";
-    const isAccount = contentType === "account";
-    const isFreeCourse = contentType === "course" && course.freeAccess && /^https:\/\//i.test(course.freeAccessUrl || "");
-    const assetLabel = isAccount ? "TÀI KHOẢN" : contentType === "model" ? "MODEL MIỄN PHÍ" : "ADDON MIỄN PHÍ";
-    return `
-      <article class="card">
-        <div class="thumb${isAccount ? " detail-trigger" : ""}" ${isAccount ? `role="button" tabindex="0" onclick="openProductDetail('${esc(course.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openProductDetail('${esc(course.id)}')}"` : ""}>
-          <span class="badge ${isFreeAsset || isAccount ? "asset" : status}"><span class="dot"></span>${isFreeAsset || isAccount ? assetLabel : LABELS[status]}</span>
-          <img src="${esc(course.image)}" alt="${esc(course.title)}" onerror="this.src='${FALLBACK_IMAGE}'">
-        </div>
-        <div class="body">
-          <h3>${esc(course.title)}</h3>
-          ${isFreeAsset || isAccount ? "" : `
-            <div class="meta"><span class="eta">${esc(course.eta)}</span><span class="pct">${progress}%</span></div>
-            <div class="track"><div class="fill ${status}" data-w="${progress}"></div></div>`}
-          ${isAccount ? `<button class="detail-trigger" type="button" onclick="openProductDetail('${esc(course.id)}')"><span>Xem chi tiết sản phẩm</span></button>` : course.description ? `<p class="course-description">${esc(course.description)}</p>` : ""}
-          ${isFreeCourse ? `
-            <div class="sale-row">
-              <span class="free-label">FREE</span>
-              <a class="download-btn" href="${esc(course.freeAccessUrl)}" target="_blank" rel="noopener noreferrer">Học miễn phí</a>
-            </div>` : isFreeAsset && course.downloadUrl ? `
-            <div class="sale-row">
-              <span class="free-label">FREE</span>
-              <a class="download-btn" href="${esc(directDownloadUrl(course.downloadUrl))}" target="_blank" rel="noopener noreferrer" download>Tải xuống</a>
-            </div>` : course.saleEnabled && Number(course.price) > 0 ? `
-            <div class="sale-row">
-              <span class="price">${formatPrice(course.price)}</span>
-              <button class="btn-primary buy-btn" type="button" onclick="openOrder('${esc(course.id)}')" ${course.deliveryReady ? "" : "disabled"}>
-                ${course.deliveryReady ? (isAccount ? "Mua tài khoản" : "Thanh toán") : "Chưa mở bán"}
-              </button>
-            </div>` : ""}
-          ${contactIcons(course.officialUrl)}
-        </div>
-      </article>`;
-  }
-
-  function renderAdmin() {
-    document.getElementById("s-name").value = state.name || "";
-    document.getElementById("s-tag").value = state.tagline || "";
-    document.getElementById("s-fb").value = state.facebook || "";
-    document.getElementById("s-dc").value = state.discord || "";
-    document.getElementById("s-bank-bin").value = state.bankBin || "";
-    document.getElementById("s-bank-account").value = state.bankAccount || "";
-    document.getElementById("s-bank-name").value = state.bankAccountName || "";
-    document.getElementById("count").textContent = state.courses.length;
-
-    const list = document.getElementById("list");
-    if (!state.courses.length) {
-      list.innerHTML = `<p class="empty">Chưa có khóa học nào.</p>`;
-      return;
+      document.querySelectorAll("[data-brand]").forEach(node => node.textContent = catalog.name || fallback.name);
+      document.querySelector("#tagline").textContent = catalog.tagline || fallback.tagline;
+      setDiscord(catalog.discordUrl);
+      renderPlans(catalog.plans);
+      renderCourses(catalog.courses);
     }
 
-    list.innerHTML = state.courses.map((course, index) => {
-      const status = normalizeStatus(course.status);
-      const progress = clampProgress(course.progress);
-      return `
-        <div class="item">
-          <img class="ph" src="${esc(course.image)}" alt="" onerror="this.src='https://placehold.co/140x88/271e15/ff9e2c?text=?'">
-          <div class="info">
-            <h4>${esc(course.title)}</h4>
-            <div class="m">
-              <span class="pill ${status}">${LABELS[status]}</span>
-              <span>${normalizeContentType(course.contentType).toUpperCase()}</span>
-              <span>${progress}%</span>
-              <span>${esc(course.eta || "-")}</span>
-              <span>${normalizeContentType(course.contentType) === "course" ? (course.freeAccess ? "Miễn phí" : course.saleEnabled ? formatPrice(course.price) : "Chưa bán") : "Miễn phí"}</span>
-              <span>${normalizeContentType(course.contentType) === "course" ? (course.freeAccess ? "Có link học" : course.deliveryReady ? "Drive sẵn sàng" : "Chưa có Drive") : normalizeContentType(course.contentType) === "account" ? "Giao thủ công" : (course.downloadUrl ? "Có link tải" : "Chưa có link tải")}</span>
-            </div>
-          </div>
-          <div class="acts">
-            <button class="btn-ghost" type="button" onclick="editCourse(${index})">Sửa</button>
-            <button class="btn-danger" type="button" onclick="deleteCourse(${index})">Xóa</button>
-          </div>
-        </div>`;
-    }).join("");
-  }
-
-  function renderAll() {
-    renderPublic();
-    renderAdmin();
-  }
-
-  function showAdmin() {
-    document.body.classList.add("admin-open");
-    document.getElementById("admin-view").setAttribute("aria-hidden", "false");
-    document.getElementById("public-view").setAttribute("aria-hidden", "true");
-    renderAdmin();
-    loadTraffic();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function hideAdmin() {
-    document.body.classList.remove("admin-open");
-    document.getElementById("admin-view").setAttribute("aria-hidden", "true");
-    document.getElementById("public-view").setAttribute("aria-hidden", "false");
-    renderPublic();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function handleBrandClick() {
-    brandClicks += 1;
-    clearTimeout(brandTimer);
-    if (brandClicks >= 3) {
-      brandClicks = 0;
-      showAdmin();
-      return;
-    }
-    brandTimer = setTimeout(() => { brandClicks = 0; }, 1200);
-  }
-
-  function toast(message) {
-    const toastElement = document.getElementById("toast");
-    toastElement.textContent = message;
-    toastElement.classList.add("show");
-    setTimeout(() => toastElement.classList.remove("show"), 2200);
-  }
-
-  function showPreviewSupport() {
-    const discord = String(state.discord || "").trim();
-    toast("Xem previews trước khi mua, liên hệ qua Discord");
-    if (/^https:\/\//i.test(discord)) window.open(discord, "_blank", "noopener,noreferrer");
-  }
-
-  function updatePreview() {
-    const value = document.getElementById("f-image").value.trim();
-    document.getElementById("f-preview").src = value || PREVIEW_IMAGE;
-  }
-
-  function openProductDetail(courseId) {
-    const course = state.courses.find(item => item.id === courseId && normalizeContentType(item.contentType) === "account");
-    if (!course) return;
-    document.getElementById("product-detail-title").textContent = course.title;
-    document.getElementById("product-detail-image").src = course.image || FALLBACK_IMAGE;
-    document.getElementById("product-detail-description").textContent = course.description || "Chưa có mô tả.";
-    document.getElementById("product-detail-price").textContent = formatPrice(course.price);
-    document.getElementById("product-detail-buy").onclick = () => { closeProductDetail(); openOrder(course.id); };
-    document.getElementById("product-detail-modal").classList.add("open");
-  }
-
-  function closeProductDetail() { document.getElementById("product-detail-modal").classList.remove("open"); }
-
-  function switchCatalog(catalog) {
-    activeCatalog = catalog === "accounts" ? "accounts" : "learning";
-    document.getElementById("tab-learning").classList.toggle("active", activeCatalog === "learning");
-    document.getElementById("tab-accounts").classList.toggle("active", activeCatalog === "accounts");
-    renderPublic();
-  }
-
-  function toggleContentFields() {
-    const type = normalizeContentType(document.getElementById("f-type").value);
-    const isFreeAsset = type === "model" || type === "addon";
-    const isAccount = type === "account";
-    const isFreeCourse = type === "course" && document.getElementById("f-free").checked;
-    document.getElementById("download-field").hidden = !isFreeAsset;
-    document.getElementById("progress-fields").hidden = isFreeAsset || isAccount;
-    document.getElementById("commerce-fields").hidden = isFreeAsset || isFreeCourse;
-    document.getElementById("drive-field").hidden = isAccount || isFreeCourse;
-    document.getElementById("sale-field").hidden = isFreeAsset || isFreeCourse;
-    document.getElementById("free-field").hidden = type !== "course";
-    document.getElementById("free-link-field").hidden = !isFreeCourse;
-    document.getElementById("sale-hint").hidden = isFreeAsset || isAccount || isFreeCourse;
-    if (isFreeCourse) document.getElementById("f-sale").checked = false;
-  }
-
-  async function submitForm() {
-    const title = document.getElementById("f-title").value.trim();
-    const image = document.getElementById("f-image").value.trim();
-    if (!title) { toast("Nhập tên khóa học"); return; }
-    if (!image) { toast("Dán link ảnh"); return; }
-
-    const editId = document.getElementById("f-id").value;
-    const existingCourse = editId === "" ? null : state.courses[parseInt(editId, 10)];
-    const contentType = normalizeContentType(document.getElementById("f-type").value);
-    const downloadUrl = document.getElementById("f-download").value.trim();
-    const officialUrl = document.getElementById("f-official").value.trim();
-    const freeAccess = contentType === "course" && document.getElementById("f-free").checked;
-    const freeAccessUrl = document.getElementById("f-free-url").value.trim();
-    const course = {
-      id: existingCourse?.id || `course-${Date.now().toString(36)}`,
-      title,
-      image,
-      description: document.getElementById("f-description").value.trim(),
-      contentType,
-      downloadUrl,
-      officialUrl,
-      freeAccess,
-      freeAccessUrl,
-      price: freeAccess || contentType === "model" || contentType === "addon" ? 0 : Math.max(0, parseInt(document.getElementById("f-price").value, 10) || 0),
-      saleEnabled: !freeAccess && !["model", "addon"].includes(contentType) && document.getElementById("f-sale").checked,
-      deliveryReady: freeAccess || contentType === "account" || existingCourse?.deliveryReady || Boolean(document.getElementById("f-drive").value.trim()),
-      driveFolderId: document.getElementById("f-drive").value.trim(),
-      status: normalizeStatus(document.getElementById("f-status").value),
-      progress: clampProgress(document.getElementById("f-progress").value),
-      eta: document.getElementById("f-eta").value.trim()
-    };
-
-    if (["model", "addon"].includes(contentType) && !/^https:\/\//i.test(downloadUrl)) {
-      toast("Model hoặc Addon cần link tải HTTPS");
-      return;
-    }
-    if (officialUrl && !/^https:\/\//i.test(officialUrl)) {
-      toast("Website chính thống phải là link HTTPS");
-      return;
-    }
-    if (freeAccess && !/^https:\/\//i.test(freeAccessUrl)) {
-      toast("Khóa học miễn phí cần link truy cập HTTPS");
-      return;
-    }
-    if (course.saleEnabled && (!course.price || !course.deliveryReady)) {
-      toast(contentType === "account" ? "Tài khoản mở bán cần có giá" : "Muốn mở bán cần nhập giá và Drive folder ID");
-      return;
-    }
-
-    const id = editId;
-    const backup = JSON.stringify(state.courses);
-    if (id === "") state.courses.push(course);
-    else state.courses[parseInt(id, 10)] = course;
-
-    const ok = await persist();
-    if (!ok) { state.courses = JSON.parse(backup); return; }
-    renderAll();
-    resetForm();
-    toast(id === "" ? "Đã thêm khóa học" : "Đã cập nhật");
-  }
-
-  function editCourse(index) {
-    const course = state.courses[index];
-    document.getElementById("f-id").value = index;
-    document.getElementById("f-title").value = course.title || "";
-    document.getElementById("f-image").value = course.image || "";
-    document.getElementById("f-status").value = normalizeStatus(course.status);
-    document.getElementById("f-progress").value = clampProgress(course.progress);
-    document.getElementById("f-eta").value = course.eta || "";
-    document.getElementById("f-description").value = course.description || "";
-    document.getElementById("f-type").value = normalizeContentType(course.contentType);
-    document.getElementById("f-download").value = course.downloadUrl || "";
-    document.getElementById("f-official").value = course.officialUrl || "";
-    document.getElementById("f-free").checked = Boolean(course.freeAccess);
-    document.getElementById("f-free-url").value = course.freeAccessUrl || "";
-    document.getElementById("f-price").value = course.price || "";
-    document.getElementById("f-drive").value = "";
-    document.getElementById("f-sale").checked = Boolean(course.saleEnabled);
-    toggleContentFields();
-    document.getElementById("form-title").textContent = "Sửa: " + (course.title || "");
-    updatePreview();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  async function deleteCourse(index) {
-    if (!confirm(`Xóa khóa học "${state.courses[index].title}"?`)) return;
-    const backup = JSON.stringify(state.courses);
-    state.courses.splice(index, 1);
-    const ok = await persist();
-    if (!ok) { state.courses = JSON.parse(backup); return; }
-    renderAll();
-    toast("Đã xóa");
-  }
-
-  function resetForm() {
-    document.getElementById("f-id").value = "";
-    ["f-title", "f-image", "f-eta", "f-description", "f-price", "f-drive", "f-download", "f-official", "f-free-url"].forEach(id => {
-      document.getElementById(id).value = "";
-    });
-    document.getElementById("f-status").value = "doing";
-    document.getElementById("f-progress").value = 0;
-    document.getElementById("f-type").value = "course";
-    document.getElementById("f-sale").checked = false;
-    document.getElementById("f-free").checked = false;
-    document.getElementById("form-title").textContent = "Thêm khóa học mới";
-    toggleContentFields();
-    updatePreview();
-  }
-
-  async function saveStudio() {
-    const backup = { name: state.name, tagline: state.tagline, facebook: state.facebook, discord: state.discord, bankBin: state.bankBin, bankAccount: state.bankAccount, bankAccountName: state.bankAccountName };
-    state.name = document.getElementById("s-name").value.trim() || "VOICE STUDIO";
-    state.tagline = document.getElementById("s-tag").value.trim();
-    state.facebook = document.getElementById("s-fb").value.trim();
-    state.discord = document.getElementById("s-dc").value.trim();
-    state.bankBin = document.getElementById("s-bank-bin").value.trim();
-    state.bankAccount = document.getElementById("s-bank-account").value.trim();
-    state.bankAccountName = document.getElementById("s-bank-name").value.trim();
-    const ok = await persist();
-    if (!ok) { Object.assign(state, backup); return; }
-    renderAll();
-    toast("Đã lưu thông tin studio");
-  }
-
-  async function resetAll() {
-    if (!confirm("Khôi phục về dữ liệu gốc? Dữ liệu hiện tại trên web sẽ bị thay thế.")) return;
-    const backup = JSON.stringify(state);
-    state = cloneDefaultState();
-    const ok = await persist();
-    if (!ok) { state = JSON.parse(backup); return; }
-    renderAll();
-    resetForm();
-    toast("Đã khôi phục dữ liệu gốc");
-  }
-
-  async function exportData() {
-    await loadState();
-    renderAll();
-    toast("Đã tải lại dữ liệu từ server");
-  }
-
-  function makePurchaseCode() {
-    const bytes = new Uint8Array(6);
-    crypto.getRandomValues(bytes);
-    return "NIX" + Array.from(bytes, value => (value % 36).toString(36)).join("").toUpperCase();
-  }
-
-  function openOrder(courseId) {
-    const course = state.courses.find(item => item.id === courseId);
-    if (!course || !course.saleEnabled || !course.deliveryReady) {
-      toast("Khóa học chưa sẵn sàng để mua");
-      return;
-    }
-    const isAccount = normalizeContentType(course.contentType) === "account";
-    if (isAccount && !authUser) {
-      localStorage.setItem("pendingAccountCourse", courseId);
-      openAuth();
-      return;
-    }
-    if (!state.bankBin || !state.bankAccount || !state.bankAccountName) {
-      toast("Chưa cấu hình tài khoản nhận tiền");
-      return;
-    }
-
-    document.getElementById("order-form").reset();
-    currentPurchaseCode = makePurchaseCode();
-    document.getElementById("order-course-id").value = course.id;
-    document.getElementById("order-course").textContent = course.title;
-    document.getElementById("order-bank").textContent = state.bankBin;
-    document.getElementById("order-account").textContent = state.bankAccount;
-    document.getElementById("order-account-name").textContent = state.bankAccountName;
-    document.getElementById("order-amount").textContent = formatPrice(course.price);
-    document.getElementById("order-code").textContent = currentPurchaseCode;
-    const emailInput = document.getElementById("order-email");
-    emailInput.readOnly = isAccount;
-    emailInput.value = isAccount ? authUser.email : "";
-    document.getElementById("order-payer").readOnly = false;
-    document.getElementById("order-reference").readOnly = false;
-    document.getElementById("order-payment").hidden = true;
-    document.getElementById("order-note").textContent = "Nhập thông tin nhận hàng để tạo mã QR thanh toán.";
-    const submitButton = document.getElementById("order-submit");
-    submitButton.hidden = false;
-    submitButton.textContent = "Tạo đơn và mã QR";
-    const qr = document.getElementById("order-qr");
-    qr.src = `https://img.vietqr.io/image/${encodeURIComponent(state.bankBin)}-${encodeURIComponent(state.bankAccount)}-compact2.png?amount=${encodeURIComponent(course.price)}&addInfo=${encodeURIComponent(currentPurchaseCode)}&accountName=${encodeURIComponent(state.bankAccountName)}`;
-    qr.hidden = false;
-    document.getElementById("order-modal").classList.add("open");
-    document.body.style.overflow = "hidden";
-  }
-
-  function closeOrder() {
-    document.getElementById("order-modal").classList.remove("open");
-    document.body.style.overflow = "";
-  }
-
-  async function submitOrder(event) {
-    event.preventDefault();
-    const button = document.getElementById("order-submit");
-    button.disabled = true;
-    button.textContent = "Đang gửi...";
-    try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courseId: document.getElementById("order-course-id").value,
-          purchaseCode: currentPurchaseCode,
-          email: document.getElementById("order-email").value.trim(),
-          payerName: document.getElementById("order-payer").value.trim(),
-          transferReference: document.getElementById("order-reference").value.trim()
-        })
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Không gửi được yêu cầu");
-      document.getElementById("order-email").readOnly = true;
-      document.getElementById("order-payer").readOnly = true;
-      document.getElementById("order-reference").readOnly = true;
-      document.getElementById("order-payment").hidden = false;
-      document.getElementById("order-note").textContent = "Quét QR và giữ nguyên nội dung chuyển khoản. Hệ thống sẽ tự xác nhận và giao hàng.";
-      button.hidden = true;
-      toast("Đã tạo đơn — vui lòng quét QR thanh toán");
-    } catch (error) {
-      toast(error.message || "Không gửi được yêu cầu");
-    } finally {
-      button.disabled = false;
-      button.textContent = "Tạo đơn và mã QR";
-    }
-  }
-
-  document.getElementById("brand").addEventListener("click", handleBrandClick);
-  document.getElementById("order-form").addEventListener("submit", submitOrder);
-  document.getElementById("order-modal").addEventListener("click", event => {
-    if (event.target.id === "order-modal") closeOrder();
-  });
-  document.getElementById("product-detail-modal").addEventListener("click", event => {
-    if (event.target.id === "product-detail-modal") closeProductDetail();
-  });
-  document.getElementById("f-preview").addEventListener("error", function () {
-    this.src = PREVIEW_IMAGE;
-  });
-
-  function hideWorkshopLoader() {
-    const loader = document.getElementById("workshop-loader");
-    requestAnimationFrame(() => {
-      loader.classList.add("is-hidden");
-      setTimeout(() => loader.remove(), 500);
-    });
-  }
-
-  initParticles();
-
-  // Tai du lieu tu server roi moi hien trang. Giu loader toi thieu de tranh nhay man hinh.
-  Promise.all([
-    loadState(),
-    initAuth(),
-    new Promise(resolve => setTimeout(resolve, 650))
-  ]).then(() => {
-    renderAll();
-    hideWorkshopLoader();
-    trackVisit();
-  });
-</script>
-
-
-</body></html>
+    document.querySelector("#year").textContent = new Date().getFullYear();
+    loadCatalog();
+  </script>
+</body>
+</html>

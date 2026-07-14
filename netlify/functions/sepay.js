@@ -1,5 +1,6 @@
 const { neon } = require("@neondatabase/serverless");
 const { google } = require("googleapis");
+const { approveHlsOrder, ensureLearningTables } = require("../../learning");
 
 let sqlClient;
 function db() {
@@ -34,7 +35,7 @@ async function ensureTables() {
 
 function validAuth(headers) {
   const key = String(process.env.SEPAY_API_KEY || "").trim();
-  if (!key) return true;
+  if (!key) return false;
   const auth = String(headers.authorization || headers.Authorization || "").trim();
   return auth === `Apikey ${key}`;
 }
@@ -88,11 +89,18 @@ async function notifyDiscord(order, purchaseCode, amount) {
 }
 
 async function claimOrder(sql, purchaseCode, amount, reference) {
+  await sql`
+    UPDATE purchase_orders
+    SET status = 'expired'
+    WHERE purchase_code = ${purchaseCode} AND delivery_type = 'hls' AND status = 'pending'
+      AND created_at <= NOW() - INTERVAL '30 minutes'
+  `;
   const rows = await sql`
     UPDATE purchase_orders
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-    RETURNING id, course_title, drive_folder_id, email, delivery_type
+      AND (status = 'paid' OR delivery_type <> 'hls' OR created_at > NOW() - INTERVAL '30 minutes')
+    RETURNING id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
 }
@@ -112,6 +120,7 @@ exports.handler = async (event) => {
 
   try {
     const sql = db();
+    await ensureLearningTables();
     await ensureTables();
     const inserted = await sql`
       INSERT INTO sepay_transactions (id, purchase_code, reference_code, amount, payload)
@@ -134,6 +143,19 @@ exports.handler = async (event) => {
     }
 
     await notifyDiscord(order, purchaseCode, amount).catch(error => console.error("sepay discord error", error));
+
+    if (order.delivery_type === "hls") {
+      try {
+        await approveHlsOrder(order.id, order.discord_id, order.access_scope, order.access_days);
+      } catch (error) {
+        await sql`UPDATE purchase_orders SET status = 'paid' WHERE id = ${order.id}`;
+        await sql`UPDATE sepay_transactions SET match_status = 'hls_failed' WHERE id = ${transactionId}`;
+        throw error;
+      }
+      await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`
+        .catch(error => console.error("sepay transaction log error", error));
+      return json(200, { success: true, status: "approved" });
+    }
 
     if (order.delivery_type === "manual") {
       await sql`UPDATE purchase_orders SET status = 'paid', reviewed_at = NOW() WHERE id = ${order.id}`;
