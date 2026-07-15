@@ -453,7 +453,7 @@ $statusLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $header.Controls.Add($statusLabel)
 
 $accessButton = New-Object Windows.Forms.Button
-$accessButton.Text = "CẤP QUYỀN EMAIL"
+$accessButton.Text = "QUẢN LÝ EMAIL"
 $accessButton.Size = New-Object Drawing.Size(160, 38)
 $accessButton.Location = New-Object Drawing.Point(894, 19)
 $accessButton.Anchor = "Top, Right"
@@ -922,6 +922,54 @@ function Invoke-GoogleAccessGrant {
   "Đã cấp quyền cho $email."
 }
 
+function Invoke-GoogleAccessManagerCommand {
+  param([string]$Arguments)
+
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = "--env-file-if-exists=.env scripts/manage-google-access.js $Arguments"
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+
+  $process = New-Object Diagnostics.Process
+  try {
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy trình quản lý quyền email." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.Result.Trim()
+    $stderr = $stderrTask.Result.Trim()
+    $exitCode = $process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
+  if ($exitCode -ne 0) {
+    if ($stderr) { throw $stderr }
+    throw "Không thể quản lý quyền email (mã $exitCode)."
+  }
+  $stdout
+}
+
+function Get-GoogleAccessGrants {
+  $json = Invoke-GoogleAccessManagerCommand "--list"
+  if (-not $json) { return @() }
+  @($json | ConvertFrom-Json)
+}
+
+function Revoke-GoogleAccessGrant {
+  param([string]$GrantId)
+  if ($GrantId -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+    throw "Mã quyền truy cập không hợp lệ."
+  }
+  Invoke-GoogleAccessManagerCommand ("--revoke {0}" -f $GrantId)
+}
+
 function Clear-Editor {
   $script:EditingCourseId = ""
   $titleBox.Clear()
@@ -1019,25 +1067,21 @@ $cancelButton.Add_Click({ Clear-Editor })
 $accessButton.Add_Click({
   if ($script:SyncRunning) { return }
   $options = @(Get-GoogleAccessOptions)
-  if ($options.Count -eq 0) {
-    [Windows.Forms.MessageBox]::Show("Chưa có khóa STREAM đủ điều kiện để cấp quyền mua lẻ.", "Chưa có khóa để cấp", "OK", "Information") | Out-Null
-    return
-  }
 
   $dialog = New-Object Windows.Forms.Form
-  $dialog.Text = "Cấp quyền truy cập Google"
+  $dialog.Text = "Quản lý quyền truy cập Google"
   $dialog.StartPosition = "CenterParent"
   $dialog.FormBorderStyle = "FixedDialog"
   $dialog.MaximizeBox = $false
   $dialog.MinimizeBox = $false
   $dialog.ShowInTaskbar = $false
-  $dialog.ClientSize = New-Object Drawing.Size(590, 310)
+  $dialog.ClientSize = New-Object Drawing.Size(860, 620)
   $dialog.BackColor = $bg
   $dialog.ForeColor = $text
   $dialog.Font = New-Object Drawing.Font("Segoe UI", 10)
 
   $accessTitle = New-Object Windows.Forms.Label
-  $accessTitle.Text = "CẤP QUYỀN MUA LẺ"
+  $accessTitle.Text = "QUẢN LÝ QUYỀN EMAIL"
   $accessTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 14)
   $accessTitle.AutoSize = $true
   $accessTitle.Location = New-Object Drawing.Point(22, 18)
@@ -1059,7 +1103,7 @@ $accessButton.Add_Click({
 
   $accessEmailBox = New-Object Windows.Forms.TextBox
   $accessEmailBox.Location = New-Object Drawing.Point(26, 104)
-  $accessEmailBox.Size = New-Object Drawing.Size(538, 30)
+  $accessEmailBox.Size = New-Object Drawing.Size(808, 30)
   $accessEmailBox.BackColor = $surface2
   $accessEmailBox.ForeColor = $text
   $accessEmailBox.BorderStyle = "FixedSingle"
@@ -1075,13 +1119,13 @@ $accessButton.Add_Click({
 
   $accessScopeBox = New-Object Windows.Forms.ComboBox
   $accessScopeBox.Location = New-Object Drawing.Point(26, 168)
-  $accessScopeBox.Size = New-Object Drawing.Size(538, 32)
+  $accessScopeBox.Size = New-Object Drawing.Size(808, 32)
   $accessScopeBox.DropDownStyle = "DropDownList"
   $accessScopeBox.BackColor = $surface2
   $accessScopeBox.ForeColor = $text
   $accessScopeBox.DisplayMember = "Label"
   foreach ($option in $options) { [void]$accessScopeBox.Items.Add($option) }
-  $accessScopeBox.SelectedIndex = 0
+  if ($options.Count -gt 0) { $accessScopeBox.SelectedIndex = 0 }
   $dialog.Controls.Add($accessScopeBox)
 
   $accessHint = New-Object Windows.Forms.Label
@@ -1092,9 +1136,9 @@ $accessButton.Add_Click({
   $accessHint.Text = "Quyền mua lẻ không hết hạn. Gmail có thể cấp trước; Workspace cần đăng nhập Google một lần."
 
   $closeAccessButton = New-Object Windows.Forms.Button
-  $closeAccessButton.Text = "HỦY"
+  $closeAccessButton.Text = "ĐÓNG"
   $closeAccessButton.Size = New-Object Drawing.Size(110, 36)
-  $closeAccessButton.Location = New-Object Drawing.Point(334, 256)
+  $closeAccessButton.Location = New-Object Drawing.Point(594, 256)
   $closeAccessButton.FlatStyle = "Flat"
   $closeAccessButton.BackColor = $surface
   $closeAccessButton.ForeColor = $muted
@@ -1105,13 +1149,122 @@ $accessButton.Add_Click({
   $grantAccessButton = New-Object Windows.Forms.Button
   $grantAccessButton.Text = "CẤP QUYỀN"
   $grantAccessButton.Size = New-Object Drawing.Size(120, 36)
-  $grantAccessButton.Location = New-Object Drawing.Point(454, 256)
+  $grantAccessButton.Location = New-Object Drawing.Point(714, 256)
   $grantAccessButton.FlatStyle = "Flat"
   $grantAccessButton.BackColor = $success
   $grantAccessButton.ForeColor = $bg
   $grantAccessButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
   $grantAccessButton.FlatAppearance.BorderColor = $success
+  $grantAccessButton.Enabled = $options.Count -gt 0
   $dialog.Controls.Add($grantAccessButton)
+
+  $approvedLabel = New-Object Windows.Forms.Label
+  $approvedLabel.Text = "EMAIL ĐÃ ĐƯỢC DUYỆT"
+  $approvedLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 10)
+  $approvedLabel.AutoSize = $true
+  $approvedLabel.Location = New-Object Drawing.Point(23, 320)
+  $dialog.Controls.Add($approvedLabel)
+
+  $accessGrid = New-Object Windows.Forms.DataGridView
+  $accessGrid.Location = New-Object Drawing.Point(26, 348)
+  $accessGrid.Size = New-Object Drawing.Size(808, 202)
+  $accessGrid.ReadOnly = $true
+  $accessGrid.AllowUserToAddRows = $false
+  $accessGrid.AllowUserToDeleteRows = $false
+  $accessGrid.AllowUserToResizeRows = $false
+  $accessGrid.AutoGenerateColumns = $false
+  $accessGrid.SelectionMode = "FullRowSelect"
+  $accessGrid.MultiSelect = $false
+  $accessGrid.RowHeadersVisible = $false
+  $accessGrid.BackgroundColor = $surface
+  $accessGrid.BorderStyle = "FixedSingle"
+  $accessGrid.GridColor = $border
+  $accessGrid.EnableHeadersVisualStyles = $false
+  $accessGrid.ColumnHeadersDefaultCellStyle.BackColor = $surface2
+  $accessGrid.ColumnHeadersDefaultCellStyle.ForeColor = $text
+  $accessGrid.ColumnHeadersDefaultCellStyle.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+  $accessGrid.ColumnHeadersHeight = 36
+  $accessGrid.DefaultCellStyle.BackColor = $surface
+  $accessGrid.DefaultCellStyle.ForeColor = $text
+  $accessGrid.DefaultCellStyle.SelectionBackColor = $discord
+  $accessGrid.DefaultCellStyle.SelectionForeColor = $text
+  $accessGrid.AlternatingRowsDefaultCellStyle.BackColor = $surface2
+  $accessGrid.RowTemplate.Height = 36
+  $dialog.Controls.Add($accessGrid)
+
+  foreach ($columnInfo in @(
+    @{ Name = "Email"; Width = 220 },
+    @{ Name = "Khóa học"; Width = 315 },
+    @{ Name = "Trạng thái"; Width = 115 },
+    @{ Name = "Ngày cấp"; Width = 150 }
+  )) {
+    $column = New-Object Windows.Forms.DataGridViewTextBoxColumn
+    $column.HeaderText = $columnInfo.Name
+    $column.Width = $columnInfo.Width
+    if ($columnInfo.Name -eq "Khóa học") { $column.AutoSizeMode = "Fill" }
+    [void]$accessGrid.Columns.Add($column)
+  }
+
+  $refreshAccessButton = New-Object Windows.Forms.Button
+  $refreshAccessButton.Text = "LÀM MỚI"
+  $refreshAccessButton.Size = New-Object Drawing.Size(110, 36)
+  $refreshAccessButton.Location = New-Object Drawing.Point(594, 568)
+  $refreshAccessButton.FlatStyle = "Flat"
+  $refreshAccessButton.BackColor = $surface
+  $refreshAccessButton.ForeColor = $muted
+  $refreshAccessButton.FlatAppearance.BorderColor = $border
+  $dialog.Controls.Add($refreshAccessButton)
+
+  $revokeAccessButton = New-Object Windows.Forms.Button
+  $revokeAccessButton.Text = "THU HỒI"
+  $revokeAccessButton.Size = New-Object Drawing.Size(120, 36)
+  $revokeAccessButton.Location = New-Object Drawing.Point(714, 568)
+  $revokeAccessButton.FlatStyle = "Flat"
+  $revokeAccessButton.BackColor = $surface
+  $revokeAccessButton.ForeColor = $danger
+  $revokeAccessButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
+  $revokeAccessButton.FlatAppearance.BorderColor = $danger
+  $revokeAccessButton.Enabled = $false
+  $dialog.Controls.Add($revokeAccessButton)
+
+  $setAccessBusy = {
+    param([bool]$Busy)
+    $dialog.UseWaitCursor = $Busy
+    $accessEmailBox.Enabled = -not $Busy
+    $accessScopeBox.Enabled = (-not $Busy) -and $options.Count -gt 0
+    $grantAccessButton.Enabled = (-not $Busy) -and $options.Count -gt 0
+    $closeAccessButton.Enabled = -not $Busy
+    $refreshAccessButton.Enabled = -not $Busy
+    $revokeAccessButton.Enabled = (-not $Busy) -and $accessGrid.SelectedRows.Count -gt 0
+  }
+
+  $refreshAccessList = {
+    & $setAccessBusy $true
+    try {
+      $accessGrid.Rows.Clear()
+      foreach ($grant in @(Get-GoogleAccessGrants)) {
+        $grantedAt = ""
+        if ($grant.grantedAt) {
+          try { $grantedAt = ([DateTimeOffset]::Parse([string]$grant.grantedAt)).ToLocalTime().ToString("dd/MM/yyyy HH:mm") } catch { $grantedAt = [string]$grant.grantedAt }
+        }
+        $linked = if ($grant.linked -eq $true) { "Đã liên kết" } else { "Chưa đăng nhập" }
+        $rowIndex = $accessGrid.Rows.Add([string]$grant.email, [string]$grant.courseTitle, $linked, $grantedAt)
+        $accessGrid.Rows[$rowIndex].Tag = [string]$grant.id
+      }
+      $approvedLabel.Text = "EMAIL ĐÃ ĐƯỢC DUYỆT  ·  $($accessGrid.Rows.Count)"
+      $accessGrid.ClearSelection()
+    } catch {
+      Write-Log "LỖI TẢI QUYỀN EMAIL: $($_.Exception.Message)"
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể tải danh sách", "OK", "Error") | Out-Null
+    } finally {
+      & $setAccessBusy $false
+    }
+  }
+
+  $accessGrid.Add_SelectionChanged({
+    if (-not $dialog.UseWaitCursor) { $revokeAccessButton.Enabled = $accessGrid.SelectedRows.Count -gt 0 }
+  })
+  $refreshAccessButton.Add_Click({ & $refreshAccessList })
 
   $grantAccessButton.Add_Click({
     $email = Normalize-GoogleAccessEmail $accessEmailBox.Text
@@ -1121,18 +1274,14 @@ $accessButton.Add_Click({
       return
     }
     try {
-      $dialog.UseWaitCursor = $true
-      $accessEmailBox.Enabled = $false
-      $accessScopeBox.Enabled = $false
-      $grantAccessButton.Enabled = $false
-      $closeAccessButton.Enabled = $false
+      & $setAccessBusy $true
       $output = Invoke-GoogleAccessGrant $email ([string]$selected.Value)
       $statusLabel.Text = "Đã cấp quyền Google."
       $statusLabel.ForeColor = $success
       Write-Log "CẤP QUYỀN: $output"
       [Windows.Forms.MessageBox]::Show($output, "Đã cấp quyền", "OK", "Information") | Out-Null
-      $dialog.DialogResult = [Windows.Forms.DialogResult]::OK
-      $dialog.Close()
+      $accessEmailBox.Clear()
+      & $refreshAccessList
     } catch {
       $statusLabel.Text = "Cấp quyền chưa hoàn tất."
       $statusLabel.ForeColor = $danger
@@ -1140,17 +1289,42 @@ $accessButton.Add_Click({
       [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể cấp quyền", "OK", "Error") | Out-Null
     } finally {
       if (-not $dialog.IsDisposed) {
-        $dialog.UseWaitCursor = $false
-        $accessEmailBox.Enabled = $true
-        $accessScopeBox.Enabled = $true
-        $grantAccessButton.Enabled = $true
-        $closeAccessButton.Enabled = $true
+        & $setAccessBusy $false
       }
+    }
+  })
+
+  $revokeAccessButton.Add_Click({
+    if ($accessGrid.SelectedRows.Count -eq 0) { return }
+    $row = $accessGrid.SelectedRows[0]
+    $grantId = [string]$row.Tag
+    $email = [string]$row.Cells[0].Value
+    $courseTitle = [string]$row.Cells[1].Value
+    $choice = [Windows.Forms.MessageBox]::Show(
+      "Thu hồi quyền của $email đối với khóa `"$courseTitle`"?`r`n`r`nTiến độ học vẫn được giữ lại.",
+      "Xác nhận thu hồi", "YesNo", "Warning"
+    )
+    if ($choice -ne [Windows.Forms.DialogResult]::Yes) { return }
+    try {
+      & $setAccessBusy $true
+      $output = Revoke-GoogleAccessGrant $grantId
+      $statusLabel.Text = "Đã thu hồi quyền email."
+      $statusLabel.ForeColor = $success
+      Write-Log "THU HỒI QUYỀN: $output"
+      & $refreshAccessList
+    } catch {
+      $statusLabel.Text = "Thu hồi quyền chưa hoàn tất."
+      $statusLabel.ForeColor = $danger
+      Write-Log "LỖI THU HỒI QUYỀN: $($_.Exception.Message)"
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể thu hồi quyền", "OK", "Error") | Out-Null
+    } finally {
+      if (-not $dialog.IsDisposed) { & $setAccessBusy $false }
     }
   })
 
   $dialog.AcceptButton = $grantAccessButton
   $dialog.CancelButton = $closeAccessButton
+  & $refreshAccessList
   [void]$accessEmailBox.Focus()
   [void]$dialog.ShowDialog($form)
   $dialog.Dispose()

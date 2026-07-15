@@ -715,6 +715,55 @@ async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOv
   };
 }
 
+async function listEmailAccess(sqlOverride) {
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  const grants = await sql`
+    SELECT id, LOWER(email) AS email, course_id, course_title,
+           auth_user_id, created_at
+    FROM purchase_orders
+    WHERE delivery_type = 'hls' AND status = 'approved' AND access_scope = 'course'
+      AND order_origin = 'admin-email'
+    ORDER BY created_at DESC
+    LIMIT 1000
+  `;
+  return grants.map(grant => ({
+    id: String(grant.id || ""),
+    email: String(grant.email || "").toLowerCase(),
+    courseId: String(grant.course_id || ""),
+    courseTitle: String(grant.course_title || ""),
+    linked: Boolean(grant.auth_user_id),
+    grantedAt: grant.created_at || null
+  }));
+}
+
+async function revokeEmailAccess(grantId, sqlOverride) {
+  const id = String(grantId || "").trim();
+  if (!validUserId(id)) throw new Error("Mã quyền truy cập không hợp lệ");
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  const revoked = await sql`
+    WITH revoked AS (
+      UPDATE purchase_orders
+      SET status = 'expired', reviewed_at = NOW()
+      WHERE id = ${id}::uuid AND delivery_type = 'hls' AND status = 'approved'
+        AND access_scope = 'course' AND order_origin = 'admin-email'
+      RETURNING id, LOWER(email) AS email, course_id, course_title
+    ), removed AS (
+      DELETE FROM learning_user_entitlements
+      WHERE last_order_id IN (SELECT id FROM revoked)
+    )
+    SELECT id, email, course_id, course_title FROM revoked
+  `;
+  if (!revoked[0]) throw new Error("Quyền truy cập không còn tồn tại hoặc đã được thu hồi");
+  return {
+    id: String(revoked[0].id || ""),
+    email: String(revoked[0].email || "").toLowerCase(),
+    courseId: String(revoked[0].course_id || ""),
+    courseTitle: String(revoked[0].course_title || "")
+  };
+}
+
 function productFor(scope, value) {
   if (scope === "course") {
     const course = findSaleCourse(value);
@@ -1028,6 +1077,8 @@ module.exports = {
   getUserEntitlements,
   googleEmail,
   grantEmailAccess,
+  listEmailAccess,
+  revokeEmailAccess,
   hasPublishedLesson,
   hasCourseAccess,
   isCourseContentReady,

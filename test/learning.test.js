@@ -7,9 +7,9 @@ const path = require("node:path");
 process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
 const {
-  canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess,
+  canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess, listEmailAccess,
   getCourseViewStats, getLearningProgress, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
-  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, recordLessonView, saveLearningProgress
+  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, recordLessonView, revokeEmailAccess, saveLearningProgress
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
@@ -364,6 +364,46 @@ test("Google access grant CLI accepts individual courses only", () => {
   });
   assert.throws(() => argumentsFrom(["--email", "user@gmail.com"]), /--course/);
   assert.throws(() => argumentsFrom(["--email", "user@gmail.com", "--plan", "full"]), /--plan/);
+});
+
+test("Google access manager CLI accepts only list and revoke", () => {
+  const { argumentsFrom } = require("../scripts/manage-google-access");
+  const id = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  assert.deepEqual(argumentsFrom(["--list"]), { action: "list" });
+  assert.deepEqual(argumentsFrom(["--revoke", id]), { action: "revoke", id });
+  assert.throws(() => argumentsFrom(["--list", id]), /--list/);
+  assert.throws(() => argumentsFrom(["--revoke"]), /--revoke/);
+});
+
+test("approved Google email grants can be listed and revoked", async () => {
+  const id = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  const createdAt = new Date("2026-07-15T08:00:00Z");
+  const queries = [];
+  const listSql = async strings => {
+    const source = strings.join(" ? ");
+    queries.push(source);
+    return [{
+      id, email: "USER@GMAIL.COM", course_id: "course-a", course_title: "Alpha",
+      auth_user_id: null, created_at: createdAt
+    }];
+  };
+  assert.deepEqual(await listEmailAccess(listSql), [{
+    id, email: "user@gmail.com", courseId: "course-a", courseTitle: "Alpha",
+    linked: false, grantedAt: createdAt
+  }]);
+  assert.match(queries[0], /order_origin = 'admin-email'/);
+
+  const revokeSql = async strings => {
+    const source = strings.join(" ? ");
+    assert.match(source, /status = 'expired'/);
+    assert.match(source, /DELETE FROM learning_user_entitlements/);
+    return [{ id, email: "user@gmail.com", course_id: "course-a", course_title: "Alpha" }];
+  };
+  assert.deepEqual(await revokeEmailAccess(id, revokeSql), {
+    id, email: "user@gmail.com", courseId: "course-a", courseTitle: "Alpha"
+  });
+  await assert.rejects(revokeEmailAccess("not-a-uuid", async () => []), /không hợp lệ/);
+  await assert.rejects(revokeEmailAccess(id, async () => []), /đã được thu hồi/);
 });
 
 test("Google email access grants only individual stream courses to verified identities", async t => {
