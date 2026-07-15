@@ -15,8 +15,8 @@ test("learning page renders a safe course lesson picker", () => {
   assert.match(page, /video\.addEventListener\("playing"/);
   assert.match(page, /id="view-stats"/);
   assert.match(page, /className = "lesson-views"/);
-  assert.match(page, /sessionId: getViewSessionId\(\)/);
   assert.match(page, /action: "view"/);
+  assert.match(page, /renderViewStats\(access\.body\.views\)/);
   assert.match(page, /await play\(access\.body\.manifestUrl\);\s*await refreshViews\(\);/);
   assert.match(page, /video\.currentTime = progress\.positionSeconds/);
   assert.doesNotMatch(page, /lesson-list\.innerHTML/);

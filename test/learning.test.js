@@ -135,7 +135,7 @@ test("lesson views count one session and active viewers", async () => {
   assert.match(queries[1].source, /last_seen_at = NOW\(\)/);
   assert.deepEqual(await getCourseViewStats("course-a", sql), [{ lessonId: "lesson-2", views: 17, watching: 3 }]);
   await assert.rejects(recordLessonView({
-    userId, sessionId: "invalid", courseId: "course-a", lessonId: "lesson-2"
+    userId: "invalid", courseId: "course-a", lessonId: "lesson-2"
   }, sql), /không hợp lệ/);
 });
 

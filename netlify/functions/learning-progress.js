@@ -47,8 +47,7 @@ exports.handler = async event => {
       const stats = await recordLessonView({
         userId: user.id,
         courseId: course.id,
-        lessonId: lesson.id,
-        sessionId: payload.sessionId
+        lessonId: lesson.id
       });
       return json(200, { ok: true, ...stats });
     }

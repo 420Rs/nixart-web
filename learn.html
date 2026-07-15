@@ -444,11 +444,9 @@
     let savedProgress;
     let courseLessons = [];
     const viewStats = new Map();
-    let currentUserId = "";
     let playbackAuthorized = false;
     let lastProgressSave = 0;
     let resumeHandler;
-    let sessionId;
 
     const states = ["loading", "login", "error"];
     function showState(id) {
@@ -487,21 +485,6 @@
       let body = {};
       try { body = await response.json(); } catch (_) {}
       return { response, body };
-    }
-
-    function getViewSessionId() {
-      if (sessionId) return sessionId;
-      const key = `nixart-view:${currentUserId}:${courseId}:${lessonId}`;
-      try {
-        sessionId = sessionStorage.getItem(key);
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId || "")) {
-          sessionId = crypto.randomUUID();
-          sessionStorage.setItem(key, sessionId);
-        }
-      } catch (_) {
-        sessionId = crypto.randomUUID();
-      }
-      return sessionId;
     }
 
     function renderViewStats(items = []) {
@@ -613,8 +596,7 @@
         body: JSON.stringify({
           action: "view",
           course: courseId,
-          lesson: lessonId,
-          sessionId: getViewSessionId()
+          lesson: lessonId
         })
       });
       if (result.response.ok) renderViewStats(result.body.views);
@@ -719,7 +701,6 @@
         if (!auth.response.ok) throw new Error("Không thể kiểm tra phiên đăng nhập");
 
         const user = auth.body.user || {};
-        currentUserId = String(user.id || "");
         document.querySelector("#user-name").textContent = user.displayName || user.name || user.username || user.email || "Thành viên Nixart";
         document.querySelector("#account").classList.add("visible");
 
@@ -751,6 +732,7 @@
         document.querySelector("#lesson-name").textContent = lessonName;
         document.querySelector("#meta-title").textContent = `${courseName} · ${lessonName}`;
         document.title = `${lessonName} — Nixart`;
+        renderViewStats(access.body.views);
         playbackAuthorized = true;
         prepareResume(await loadProgress());
         await play(access.body.manifestUrl);

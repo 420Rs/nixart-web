@@ -526,12 +526,19 @@ async function getCourseViewStats(courseId, sqlOverride) {
   }));
 }
 
-async function recordLessonView({ userId, courseId, lessonId, sessionId }, sqlOverride) {
+function lessonViewSessionId(userId, courseId, lessonId) {
+  const hex = crypto.createHash("sha256").update(`${userId}:${courseId}:${lessonId}`).digest("hex");
+  const variant = ((parseInt(hex[16], 16) & 3) | 8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function recordLessonView({ userId, courseId, lessonId }, sqlOverride) {
   const safeCourseId = cleanId(courseId);
   const safeLessonId = cleanId(lessonId);
-  if (!validUserId(userId) || !validUserId(sessionId) || !safeCourseId || !safeLessonId) {
+  if (!validUserId(userId) || !safeCourseId || !safeLessonId) {
     throw new Error("Phiên xem bài học không hợp lệ");
   }
+  const sessionId = lessonViewSessionId(String(userId), safeCourseId, safeLessonId);
   if (!sqlOverride) await ensureLearningTables();
   const sql = sqlOverride || db();
   await sql`

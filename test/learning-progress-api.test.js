@@ -60,7 +60,6 @@ test("progress API authenticates, checks access and reads or writes one resume p
     httpMethod: "POST",
     body: JSON.stringify({
       action: "view", course: "course-a", lesson: "lesson-2",
-      sessionId: "a5a5a5a5-1111-4111-8111-123456789abc"
     })
   });
   assert.equal(viewResponse.statusCode, 200);

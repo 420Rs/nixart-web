@@ -1,6 +1,6 @@
 const { cookie, getAuthenticatedUser } = require("./lib/auth");
 const { COOKIE_NAME, issueMediaToken } = require("./lib/media-token");
-const { cleanId, findCourse, findLesson, hasCourseAccess } = require("../../learning");
+const { cleanId, findCourse, findLesson, hasCourseAccess, recordLessonView } = require("../../learning");
 
 function json(statusCode, body, cookieValue) {
   const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
@@ -23,11 +23,13 @@ exports.handler = async (event) => {
     if (!await hasCourseAccess(user, course)) {
       return json(403, { error: "Bạn chưa mua khóa học hoặc gói tháng đã hết hạn" });
     }
+    const stats = await recordLessonView({ userId: user.id, courseId: course.id, lessonId: lesson.id });
     const mediaPath = `/media/${course.id}/${lesson.id}/`;
     const token = issueMediaToken({ userId: user.id, courseId: course.id, lessonId: lesson.id });
     return json(200, {
       course: { id: course.id, title: course.title },
       lesson: { id: lesson.id, title: lesson.title },
+      views: stats.views,
       manifestUrl: `${mediaPath}index.m3u8`
     }, cookie(COOKIE_NAME, token, event, 3600, mediaPath));
   } catch (error) {
