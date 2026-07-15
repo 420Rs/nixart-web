@@ -606,7 +606,17 @@
 
     async function refreshViews() {
       if (!playbackAuthorized || document.visibilityState !== "visible") return;
-      const result = await getJson("/api/learning-progress?" + new URLSearchParams({ course: courseId }));
+      const result = await getJson("/api/learning-progress", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "view",
+          course: courseId,
+          lesson: lessonId,
+          sessionId: getViewSessionId()
+        })
+      });
       if (result.response.ok) renderViewStats(result.body.views);
     }
 
@@ -630,7 +640,6 @@
       const payload = {
         course: courseId,
         lesson: lessonId,
-        sessionId: getViewSessionId(),
         positionSeconds: video.currentTime,
         durationSeconds: video.duration
       };
@@ -642,10 +651,8 @@
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify(payload)
         });
-        const body = await response.json().catch(() => ({}));
         if (response.ok) {
           savedProgress = { lessonId, positionSeconds: Math.floor(video.currentTime), durationSeconds: Math.floor(video.duration) };
-          renderViewStats(body.view ? [body.view] : []);
           renderSavedProgress();
         }
       } catch (_) {}
@@ -747,6 +754,7 @@
         playbackAuthorized = true;
         prepareResume(await loadProgress());
         await play(access.body.manifestUrl);
+        await refreshViews();
       } catch (error) {
         showError("Chưa thể mở bài học", error.message || "Hệ thống đang bận. Hãy thử lại sau.");
       }

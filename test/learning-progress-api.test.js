@@ -23,7 +23,10 @@ test("progress API authenticates, checks access and reads or writes one resume p
   learning.hasCourseAccess = async () => allowed;
   learning.getLearningProgress = async () => ({ lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600 });
   learning.getCourseViewStats = async () => [{ lessonId: "lesson-2", views: 12, watching: 2 }];
-  learning.recordLessonView = async input => ({ lessonId: input.lessonId, views: 13, watching: 3 });
+  learning.recordLessonView = async input => ({
+    view: { lessonId: input.lessonId, views: 13, watching: 3 },
+    views: [{ lessonId: input.lessonId, views: 13, watching: 3 }]
+  });
   learning.saveLearningProgress = async input => ({
     lessonId: input.lessonId,
     positionSeconds: Math.floor(input.positionSeconds),
@@ -47,13 +50,25 @@ test("progress API authenticates, checks access and reads or writes one resume p
   const postResponse = await handler({
     httpMethod: "POST",
     body: JSON.stringify({
-      course: "course-a", lesson: "lesson-2", sessionId: "a5a5a5a5-1111-4111-8111-123456789abc",
-      positionSeconds: 150.7, durationSeconds: 600.2
+      course: "course-a", lesson: "lesson-2", positionSeconds: 150.7, durationSeconds: 600.2
     })
   });
   assert.equal(postResponse.statusCode, 200);
   assert.deepEqual(JSON.parse(postResponse.body).progress, { lessonId: "lesson-2", positionSeconds: 150, durationSeconds: 600 });
-  assert.deepEqual(JSON.parse(postResponse.body).view, { lessonId: "lesson-2", views: 13, watching: 3 });
+
+  const viewResponse = await handler({
+    httpMethod: "POST",
+    body: JSON.stringify({
+      action: "view", course: "course-a", lesson: "lesson-2",
+      sessionId: "a5a5a5a5-1111-4111-8111-123456789abc"
+    })
+  });
+  assert.equal(viewResponse.statusCode, 200);
+  assert.deepEqual(JSON.parse(viewResponse.body), {
+    ok: true,
+    view: { lessonId: "lesson-2", views: 13, watching: 3 },
+    views: [{ lessonId: "lesson-2", views: 13, watching: 3 }]
+  });
 
   allowed = false;
   assert.equal((await handler({ httpMethod: "GET", queryStringParameters: { course: "course-a" } })).statusCode, 403);

@@ -43,6 +43,15 @@ exports.handler = async event => {
 
     const lesson = findLesson(course, cleanId(payload.lesson));
     if (!lesson) return json(404, { error: "Không tìm thấy bài học" });
+    if (payload.action === "view") {
+      const stats = await recordLessonView({
+        userId: user.id,
+        courseId: course.id,
+        lessonId: lesson.id,
+        sessionId: payload.sessionId
+      });
+      return json(200, { ok: true, ...stats });
+    }
     const progress = await saveLearningProgress({
       userId: user.id,
       courseId: course.id,
@@ -50,13 +59,7 @@ exports.handler = async event => {
       positionSeconds: payload.positionSeconds,
       durationSeconds: payload.durationSeconds
     });
-    const view = payload.sessionId ? await recordLessonView({
-      userId: user.id,
-      courseId: course.id,
-      lessonId: lesson.id,
-      sessionId: payload.sessionId
-    }) : null;
-    return json(200, { ok: true, progress, view });
+    return json(200, { ok: true, progress });
   } catch (error) {
     if (/không hợp lệ/i.test(error.message || "")) return json(400, { error: error.message });
     console.error("learning progress error", error);

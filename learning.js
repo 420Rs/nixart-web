@@ -553,7 +553,10 @@ async function recordLessonView({ userId, courseId, lessonId, sessionId }, sqlOv
       AND course_id = ${safeCourseId} AND lesson_id = ${safeLessonId}
   `;
   const stats = await getCourseViewStats(safeCourseId, sql);
-  return stats.find(item => item.lessonId === safeLessonId) || { lessonId: safeLessonId, views: 0, watching: 0 };
+  return {
+    view: stats.find(item => item.lessonId === safeLessonId) || { lessonId: safeLessonId, views: 0, watching: 0 },
+    views: stats
+  };
 }
 
 async function claimUserEntitlements(user, sqlOverride) {

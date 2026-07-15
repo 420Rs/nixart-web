@@ -127,7 +127,10 @@ test("lesson views count one session and active viewers", async () => {
   };
   assert.deepEqual(await recordLessonView({
     userId, sessionId, courseId: "course-a", lessonId: "lesson-2"
-  }, sql), { lessonId: "lesson-2", views: 17, watching: 3 });
+  }, sql), {
+    view: { lessonId: "lesson-2", views: 17, watching: 3 },
+    views: [{ lessonId: "lesson-2", views: 17, watching: 3 }]
+  });
   assert.match(queries[0].source, /ON CONFLICT \(session_id\) DO NOTHING/);
   assert.match(queries[1].source, /last_seen_at = NOW\(\)/);
   assert.deepEqual(await getCourseViewStats("course-a", sql), [{ lessonId: "lesson-2", views: 17, watching: 3 }]);
