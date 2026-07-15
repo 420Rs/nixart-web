@@ -959,7 +959,8 @@ function Invoke-GoogleAccessManagerCommand {
 function Get-GoogleAccessGrants {
   $json = Invoke-GoogleAccessManagerCommand "--list"
   if (-not $json) { return @() }
-  @($json | ConvertFrom-Json)
+  $parsed = $json | ConvertFrom-Json
+  @($parsed | ForEach-Object { $_ })
 }
 
 function Revoke-GoogleAccessGrant {
