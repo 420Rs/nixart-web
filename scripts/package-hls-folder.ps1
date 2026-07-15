@@ -7,6 +7,7 @@ param(
   [ValidateRange(2, 10)][int]$SegmentSeconds = 6,
   [ValidateRange(16, 30)][int]$Crf = 22,
   [ValidateRange(0, 999)][int]$Limit = 0,
+  [switch]$Recurse,
   [switch]$StreamCopy,
   [switch]$Force,
   [switch]$Plan
@@ -20,7 +21,7 @@ $mediaCourseRoot = Join-Path $repoRoot "media\$CourseId"
 $manifestPath = Join-Path $mediaCourseRoot 'source-manifest.json'
 $folder = (Resolve-Path -LiteralPath $InputFolder).Path
 $videoExtensions = @('.mp4', '.mov', '.mkv', '.m4v')
-$videos = @(Get-ChildItem -LiteralPath $folder -File | Where-Object { $videoExtensions -contains $_.Extension.ToLowerInvariant() } | Sort-Object Name)
+$videos = @(Get-ChildItem -LiteralPath $folder -File -Recurse:$Recurse | Where-Object { $videoExtensions -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
 if ($Limit -gt 0) { $videos = @($videos | Select-Object -First $Limit) }
 
 if ($videos.Count -eq 0) { throw "No videos found in $folder" }
