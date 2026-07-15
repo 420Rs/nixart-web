@@ -10,7 +10,11 @@ param(
   [switch]$Recurse,
   [switch]$StreamCopy,
   [switch]$Force,
-  [switch]$Plan
+  [switch]$Plan,
+  [switch]$JsonPlan,
+  [switch]$PreferVietnamese,
+  [switch]$ReuseExistingHls,
+  [string]$StorageRoot = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,7 +25,21 @@ $mediaCourseRoot = Join-Path $repoRoot "media\$CourseId"
 $manifestPath = Join-Path $mediaCourseRoot 'source-manifest.json'
 $folder = (Resolve-Path -LiteralPath $InputFolder).Path
 $videoExtensions = @('.mp4', '.mov', '.mkv', '.m4v')
-$videos = @(Get-ChildItem -LiteralPath $folder -File -Recurse:$Recurse | Where-Object { $videoExtensions -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
+$videos = @(Get-ChildItem -LiteralPath $folder -File -Recurse:$Recurse | Where-Object {
+  $videoExtensions -contains $_.Extension.ToLowerInvariant() -and $_.FullName -notlike "*\.nixart-stream\*"
+} | Sort-Object FullName)
+if ($PreferVietnamese) {
+  $preferred = @{}
+  foreach ($video in $videos) {
+    $base = [IO.Path]::GetFileNameWithoutExtension($video.Name)
+    $canonicalBase = $base -replace '(?i)_vi_dubbed$', ''
+    $relativeDirectory = $video.DirectoryName.Substring($folder.Length).TrimStart('\')
+    $key = (Join-Path $relativeDirectory $canonicalBase).ToLowerInvariant()
+    $isVietnamese = $base -match '(?i)_vi_dubbed$'
+    if (-not $preferred.ContainsKey($key) -or $isVietnamese) { $preferred[$key] = $video }
+  }
+  $videos = @($preferred.Values | Sort-Object FullName)
+}
 if ($Limit -gt 0) { $videos = @($videos | Select-Object -First $Limit) }
 
 if ($videos.Count -eq 0) { throw "No videos found in $folder" }
@@ -50,7 +68,7 @@ function Test-HlsPlaylist {
   if ($segments.Count -eq 0) { return $false }
   $directory = [IO.Path]::GetDirectoryName($Path)
   foreach ($segment in $segments) {
-    if ($segment -cnotmatch '^seg_[A-Za-z0-9_]+_[0-9]{5}\.ts$' -or -not [IO.File]::Exists((Join-Path $directory $segment))) {
+    if ($segment -cnotmatch '^[A-Za-z0-9_.-]{1,120}\.ts$' -or -not [IO.File]::Exists((Join-Path $directory $segment))) {
       return $false
     }
   }
@@ -77,6 +95,7 @@ function Get-SourceIdentity {
     length = [long]$file.Length
     lastWriteTimeUtc = $file.LastWriteTimeUtc.ToString('O')
     sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    sourceHls = [string]$Lesson.sourceHls
     streamCopy = [bool]$StreamCopy
     height = $Height
     segmentSeconds = $SegmentSeconds
@@ -104,6 +123,7 @@ function Test-SourceIdentity {
     [long]$Expected.length -eq [long]$Actual.length -and
     [string]$Expected.lastWriteTimeUtc -ceq [string]$Actual.lastWriteTimeUtc -and
     [string]$Expected.sha256 -ceq [string]$Actual.sha256 -and
+    [string]$Expected.sourceHls -ieq [string]$Actual.sourceHls -and
     [bool]$Expected.streamCopy -eq [bool]$Actual.streamCopy -and
     [int]$Expected.height -eq [int]$Actual.height -and
     [int]$Expected.segmentSeconds -eq [int]$Actual.segmentSeconds -and
@@ -165,18 +185,35 @@ for ($index = 0; $index -lt $videos.Count; $index++) {
   $sourceBase = [IO.Path]::GetFileNameWithoutExtension($video.Name).Trim()
   $isVietnameseDub = $sourceBase -match '(?i)_vi_dubbed$'
   $cleanTitle = ($sourceBase -replace '(?i)_vi_dubbed$', '' -replace '_', ' ').Trim()
+  $candidatePlaylist = Join-Path (Join-Path $video.DirectoryName "${sourceBase}_hls") 'index.m3u8'
+  $sourceHls = if ($ReuseExistingHls -and (Test-HlsPlaylist $candidatePlaylist)) { $candidatePlaylist } else { '' }
   if (-not $cleanTitle -or $cleanTitle.Length -gt 240 -or $cleanTitle -match '[\x00-\x1F\x7F]') { throw "Invalid lesson title: $($video.Name)" }
   $lessons += [pscustomobject][ordered]@{
     id = ('lesson-{0:D2}' -f ($index + 1))
-    title = $(if ($isVietnameseDub) { "$cleanTitle - $vietnameseLabel" } else { $cleanTitle })
+    title = $cleanTitle
     duration = Get-DurationLabel $video.FullName
     published = $true
     source = $video.FullName
+    sourceHls = $sourceHls
+    language = $(if ($isVietnameseDub) { $vietnameseLabel } else { 'Original' })
   }
 }
 
 if ($Plan) {
-  $lessons | Select-Object id, title, duration, source | Format-Table -AutoSize
+  if ($JsonPlan) {
+    [pscustomobject][ordered]@{
+      courseId = $CourseId
+      title = $(if ($CourseTitle.Trim()) { $CourseTitle.Trim() } else { [IO.Path]::GetFileName($folder.TrimEnd('\')) })
+      inputFolder = $folder
+      storageRoot = $(if ($StorageRoot.Trim()) { [IO.Path]::GetFullPath($StorageRoot) } else { '' })
+      lessonCount = $lessons.Count
+      reusedCount = @($lessons | Where-Object { $_.sourceHls }).Count
+      packageCount = @($lessons | Where-Object { -not $_.sourceHls }).Count
+      lessons = @($lessons | Select-Object id, title, duration, language, source, sourceHls)
+    } | ConvertTo-Json -Depth 5 -Compress
+  } else {
+    $lessons | Select-Object id, title, duration, language, source, sourceHls | Format-Table -AutoSize
+  }
   return
 }
 
@@ -194,6 +231,22 @@ if ($preflightMatches.Count -eq 1) {
   }
 }
 
+if ($StorageRoot.Trim()) {
+  $storage = [IO.Path]::GetFullPath($StorageRoot)
+  [IO.Directory]::CreateDirectory($storage) | Out-Null
+  $targetCourseRoot = Join-Path $storage $CourseId
+  [IO.Directory]::CreateDirectory($targetCourseRoot) | Out-Null
+  if ([IO.Directory]::Exists($mediaCourseRoot)) {
+    $mediaItem = Get-Item -LiteralPath $mediaCourseRoot
+    $target = @($mediaItem.Target) | Select-Object -First 1
+    if ($mediaItem.LinkType -ne 'Junction' -or [IO.Path]::GetFullPath([string]$target) -ine [IO.Path]::GetFullPath($targetCourseRoot)) {
+      throw "Media folder already exists and is not linked to storage: $mediaCourseRoot"
+    }
+  } else {
+    New-Item -ItemType Junction -Path $mediaCourseRoot -Target $targetCourseRoot | Out-Null
+  }
+}
+
 $manifest = Get-SourceManifest
 $identities = @{}
 foreach ($lesson in $lessons) { $identities[[string]$lesson.id] = Get-SourceIdentity $lesson }
@@ -206,6 +259,24 @@ for ($index = 0; $index -lt $lessons.Count; $index++) {
   Write-Host ("[{0}/{1}] {2}" -f ($index + 1), $lessons.Count, $lesson.title)
   if (-not $Force -and (Test-HlsPlaylist $playlist) -and (Test-SourceIdentity $savedIdentity $identity)) {
     Write-Host "Skip complete playlist: $playlist"
+    continue
+  }
+  if ($ReuseExistingHls -and $lesson.sourceHls) {
+    $lessonFolder = [IO.Path]::GetDirectoryName($playlist)
+    $sourceFolder = [IO.Path]::GetDirectoryName([string]$lesson.sourceHls)
+    if ([IO.Directory]::Exists($lessonFolder)) {
+      $lessonItem = Get-Item -LiteralPath $lessonFolder
+      $target = @($lessonItem.Target) | Select-Object -First 1
+      if ($lessonItem.LinkType -ne 'Junction' -or [IO.Path]::GetFullPath([string]$target) -ine [IO.Path]::GetFullPath($sourceFolder)) {
+        throw "Lesson folder already exists and cannot reuse HLS: $lessonFolder"
+      }
+    } else {
+      New-Item -ItemType Junction -Path $lessonFolder -Target $sourceFolder | Out-Null
+    }
+    if (-not (Test-HlsPlaylist $playlist)) { throw "Invalid reused playlist: $playlist" }
+    $manifest.lessons = @($manifest.lessons | Where-Object { [string]$_.id -cne [string]$lesson.id }) + $identity
+    Save-SourceManifest $manifest
+    Write-Host "Reuse existing HLS: $($lesson.sourceHls)"
     continue
   }
   $packagerArguments = @{
@@ -227,6 +298,8 @@ foreach ($lesson in $lessons) {
   $playlist = Join-Path $repoRoot "media\$CourseId\$($lesson.id)\index.m3u8"
   if (-not (Test-HlsPlaylist $playlist)) { throw "Incomplete playlist after packaging: $playlist" }
   $lesson.PSObject.Properties.Remove('source')
+  $lesson.PSObject.Properties.Remove('sourceHls')
+  $lesson.PSObject.Properties.Remove('language')
 }
 
 $snapshot = Get-CatalogSnapshot

@@ -23,6 +23,10 @@ $script:SyncProcess = $null
 $script:SyncStdoutTask = $null
 $script:SyncStderrTask = $null
 $script:AutoSyncRequested = $false
+$script:ImportProcess = $null
+$script:ImportStdoutTask = $null
+$script:ImportStderrTask = $null
+$script:ImportCourseId = ""
 
 function Get-CatalogSnapshot {
   param([string]$Path = $script:CatalogPath)
@@ -382,6 +386,7 @@ if ($SelfTest) {
 
 $createdNew = $false
 $mutexName = "Local\NixartCourseManager-" + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script:RepoRoot)).Replace("=", "").Replace("/", "_").Replace("+", "-")
+if ($LayoutTest) { $mutexName += '-layout-test' }
 $mutex = New-Object Threading.Mutex($true, $mutexName, [ref]$createdNew)
 if (-not $createdNew) {
   [Windows.Forms.MessageBox]::Show("Nixart Course Manager đang mở ở cửa sổ khác.", "Nixart", "OK", "Information") | Out-Null
@@ -569,6 +574,18 @@ $newButton.ForeColor = $text
 $newButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $newButton.FlatAppearance.BorderColor = $discord
 $listToolbar.Controls.Add($newButton)
+
+$importButton = New-Object Windows.Forms.Button
+$importButton.Text = "NHẬP STREAM"
+$importButton.Size = New-Object Drawing.Size(120, 34)
+$importButton.Location = New-Object Drawing.Point(169, 12)
+$importButton.Anchor = "Top, Right"
+$importButton.FlatStyle = "Flat"
+$importButton.BackColor = $surface2
+$importButton.ForeColor = $success
+$importButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$importButton.FlatAppearance.BorderColor = $success
+$listToolbar.Controls.Add($importButton)
 
 $deleteButton = New-Object Windows.Forms.Button
 $deleteButton.Text = "XÓA BÀI ĐĂNG"
@@ -971,6 +988,76 @@ function Revoke-GoogleAccessGrant {
   Invoke-GoogleAccessManagerCommand ("--revoke {0}" -f $GrantId)
 }
 
+function Quote-StreamImportArgument {
+  param([string]$Value)
+  if ($Value -match '["\x00-\x1F]') { throw "Giá trị nhập STREAM chứa ký tự không được hỗ trợ." }
+  '"' + $Value + '"'
+}
+
+function New-StreamImportStartInfo {
+  param(
+    [string]$Folder,
+    [string]$CourseId,
+    [string]$Title,
+    [bool]$PreferVietnamese,
+    [bool]$ReuseExistingHls,
+    [bool]$Plan
+  )
+
+  if (-not [IO.Directory]::Exists($Folder)) { throw "Không tìm thấy thư mục khóa học." }
+  if ($CourseId -cnotmatch '^[a-z0-9][a-z0-9_-]{0,79}$') { throw "Mã khóa học không hợp lệ." }
+  if (-not $Title.Trim() -or $Title.Length -gt 100) { throw "Tên khóa học cần từ 1 đến 100 ký tự." }
+  $scriptPath = Join-Path $script:RepoRoot 'scripts\package-hls-folder.ps1'
+  $storageRoot = Join-Path ([IO.Path]::GetFullPath($Folder)) '.nixart-stream'
+  $arguments = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-StreamImportArgument $scriptPath),
+    '-InputFolder', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($Folder))),
+    '-CourseId', $CourseId,
+    '-CourseTitle', (Quote-StreamImportArgument $Title.Trim()),
+    '-StorageRoot', (Quote-StreamImportArgument $storageRoot),
+    '-Recurse'
+  )
+  if ($PreferVietnamese) { $arguments += '-PreferVietnamese' }
+  if ($ReuseExistingHls) { $arguments += '-ReuseExistingHls' }
+  if ($Plan) { $arguments += @('-Plan', '-JsonPlan') }
+
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = $arguments -join ' '
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+  $startInfo
+}
+
+function Get-StreamFolderPlan {
+  param([string]$Folder, [string]$CourseId, [string]$Title, [bool]$PreferVietnamese, [bool]$ReuseExistingHls)
+
+  $process = New-Object Diagnostics.Process
+  try {
+    $process.StartInfo = New-StreamImportStartInfo $Folder $CourseId $Title $PreferVietnamese $ReuseExistingHls $true
+    if (-not $process.Start()) { throw "Không thể khởi chạy bộ quét STREAM." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.Result.Trim()
+    $stderr = $stderrTask.Result.Trim()
+    $exitCode = $process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
+  if ($exitCode -ne 0) {
+    if ($stderr) { throw $stderr }
+    throw "Bộ quét STREAM thất bại (mã $exitCode)."
+  }
+  if (-not $stdout) { throw "Bộ quét STREAM không trả về dữ liệu." }
+  $stdout | ConvertFrom-Json
+}
+
 function Clear-Editor {
   $script:EditingCourseId = ""
   $titleBox.Clear()
@@ -1063,8 +1150,320 @@ function Load-CourseIntoEditor {
   $deleteButton.Enabled = $true
 }
 
+$importTimer = New-Object Windows.Forms.Timer
+$importTimer.Interval = 500
+$importTimer.Add_Tick({
+  if ($null -eq $script:ImportProcess -or -not $script:ImportProcess.HasExited) { return }
+  $importTimer.Stop()
+  $stdout = $script:ImportStdoutTask.Result.Trim()
+  $stderr = $script:ImportStderrTask.Result.Trim()
+  $exitCode = $script:ImportProcess.ExitCode
+  $courseId = $script:ImportCourseId
+  $script:ImportProcess.Dispose()
+  $script:ImportProcess = $null
+  $script:ImportStdoutTask = $null
+  $script:ImportStderrTask = $null
+  $script:ImportCourseId = ""
+  $script:SyncRunning = $false
+  $syncButton.Enabled = $true
+  $accessButton.Enabled = $true
+  $listToolbar.Enabled = $true
+  $courseGrid.Enabled = $true
+  $editor.Enabled = $true
+  if ($stdout) { Write-Log $stdout }
+  if ($stderr) { Write-Log "LỖI: $stderr" }
+  if ($exitCode -eq 0) {
+    Refresh-CourseList $courseId
+    Load-CourseIntoEditor $courseId
+    $statusLabel.Text = "Đã nhập khóa STREAM; hãy hoàn thiện thông tin."
+    $statusLabel.ForeColor = $success
+    Write-Log "Nhập STREAM hoàn tất: $courseId."
+  } else {
+    $statusLabel.Text = "Nhập STREAM chưa hoàn tất."
+    $statusLabel.ForeColor = $danger
+    Write-Log "Nhập STREAM thất bại (mã $exitCode); có thể chạy lại để tiếp tục."
+  }
+})
+
 $newButton.Add_Click({ Clear-Editor })
 $cancelButton.Add_Click({ Clear-Editor })
+$importButton.Add_Click({
+  if ($script:SyncRunning) { return }
+
+  $dialog = New-Object Windows.Forms.Form
+  $dialog.Text = "Nhập khóa STREAM từ thư mục"
+  $dialog.StartPosition = "CenterParent"
+  $dialog.FormBorderStyle = "FixedDialog"
+  $dialog.MaximizeBox = $false
+  $dialog.MinimizeBox = $false
+  $dialog.ShowInTaskbar = $false
+  $dialog.ClientSize = New-Object Drawing.Size(900, 650)
+  $dialog.BackColor = $bg
+  $dialog.ForeColor = $text
+  $dialog.Font = New-Object Drawing.Font("Segoe UI", 10)
+
+  $importTitle = New-Object Windows.Forms.Label
+  $importTitle.Text = "NHẬP KHÓA STREAM"
+  $importTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 14)
+  $importTitle.AutoSize = $true
+  $importTitle.Location = New-Object Drawing.Point(22, 18)
+  $dialog.Controls.Add($importTitle)
+
+  $importCopy = New-Object Windows.Forms.Label
+  $importCopy.Text = "Quét mọi thư mục con, ghép video gốc/lồng tiếng và giữ file HLS trên ổ chứa khóa học."
+  $importCopy.ForeColor = $muted
+  $importCopy.AutoSize = $true
+  $importCopy.Location = New-Object Drawing.Point(23, 49)
+  $dialog.Controls.Add($importCopy)
+
+  $folderLabel = New-Object Windows.Forms.Label
+  $folderLabel.Text = "THƯ MỤC KHÓA HỌC"
+  $folderLabel.ForeColor = $muted
+  $folderLabel.AutoSize = $true
+  $folderLabel.Location = New-Object Drawing.Point(23, 82)
+  $dialog.Controls.Add($folderLabel)
+
+  $folderBox = New-Object Windows.Forms.TextBox
+  $folderBox.Location = New-Object Drawing.Point(26, 104)
+  $folderBox.Size = New-Object Drawing.Size(722, 30)
+  $folderBox.BackColor = $surface2
+  $folderBox.ForeColor = $text
+  $folderBox.BorderStyle = "FixedSingle"
+  $dialog.Controls.Add($folderBox)
+
+  $browseFolderButton = New-Object Windows.Forms.Button
+  $browseFolderButton.Text = "CHỌN..."
+  $browseFolderButton.Size = New-Object Drawing.Size(120, 30)
+  $browseFolderButton.Location = New-Object Drawing.Point(754, 103)
+  $browseFolderButton.FlatStyle = "Flat"
+  $browseFolderButton.BackColor = $surface2
+  $browseFolderButton.ForeColor = $text
+  $browseFolderButton.FlatAppearance.BorderColor = $border
+  $dialog.Controls.Add($browseFolderButton)
+
+  $courseTitleLabel = New-Object Windows.Forms.Label
+  $courseTitleLabel.Text = "TÊN KHÓA HỌC"
+  $courseTitleLabel.ForeColor = $muted
+  $courseTitleLabel.AutoSize = $true
+  $courseTitleLabel.Location = New-Object Drawing.Point(23, 147)
+  $dialog.Controls.Add($courseTitleLabel)
+
+  $courseTitleBox = New-Object Windows.Forms.TextBox
+  $courseTitleBox.Location = New-Object Drawing.Point(26, 169)
+  $courseTitleBox.Size = New-Object Drawing.Size(548, 30)
+  $courseTitleBox.BackColor = $surface2
+  $courseTitleBox.ForeColor = $text
+  $courseTitleBox.BorderStyle = "FixedSingle"
+  $courseTitleBox.MaxLength = 100
+  $dialog.Controls.Add($courseTitleBox)
+
+  $courseIdLabel = New-Object Windows.Forms.Label
+  $courseIdLabel.Text = "MÃ KHÓA"
+  $courseIdLabel.ForeColor = $muted
+  $courseIdLabel.AutoSize = $true
+  $courseIdLabel.Location = New-Object Drawing.Point(591, 147)
+  $dialog.Controls.Add($courseIdLabel)
+
+  $courseIdBox = New-Object Windows.Forms.TextBox
+  $courseIdBox.Location = New-Object Drawing.Point(594, 169)
+  $courseIdBox.Size = New-Object Drawing.Size(280, 30)
+  $courseIdBox.BackColor = $surface2
+  $courseIdBox.ForeColor = $text
+  $courseIdBox.BorderStyle = "FixedSingle"
+  $courseIdBox.MaxLength = 80
+  $dialog.Controls.Add($courseIdBox)
+
+  $preferVietnameseBox = New-Object Windows.Forms.CheckBox
+  $preferVietnameseBox.Text = "Ưu tiên bản lồng tiếng Việt"
+  $preferVietnameseBox.Checked = $true
+  $preferVietnameseBox.AutoSize = $true
+  $preferVietnameseBox.Location = New-Object Drawing.Point(26, 216)
+  $preferVietnameseBox.FlatStyle = "Flat"
+  $dialog.Controls.Add($preferVietnameseBox)
+
+  $reuseHlsBox = New-Object Windows.Forms.CheckBox
+  $reuseHlsBox.Text = "Tái sử dụng .m3u8 + .ts có sẵn"
+  $reuseHlsBox.Checked = $true
+  $reuseHlsBox.AutoSize = $true
+  $reuseHlsBox.Location = New-Object Drawing.Point(280, 216)
+  $reuseHlsBox.FlatStyle = "Flat"
+  $dialog.Controls.Add($reuseHlsBox)
+
+  $scanFolderButton = New-Object Windows.Forms.Button
+  $scanFolderButton.Text = "QUÉT THƯ MỤC"
+  $scanFolderButton.Size = New-Object Drawing.Size(140, 34)
+  $scanFolderButton.Location = New-Object Drawing.Point(734, 209)
+  $scanFolderButton.FlatStyle = "Flat"
+  $scanFolderButton.BackColor = $discord
+  $scanFolderButton.ForeColor = $text
+  $scanFolderButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+  $scanFolderButton.FlatAppearance.BorderColor = $discord
+  $dialog.Controls.Add($scanFolderButton)
+
+  $planLabel = New-Object Windows.Forms.Label
+  $planLabel.Text = "CHƯA QUÉT THƯ MỤC"
+  $planLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
+  $planLabel.ForeColor = $muted
+  $planLabel.AutoSize = $true
+  $planLabel.Location = New-Object Drawing.Point(23, 263)
+  $dialog.Controls.Add($planLabel)
+
+  $lessonGrid = New-Object Windows.Forms.DataGridView
+  $lessonGrid.Location = New-Object Drawing.Point(26, 289)
+  $lessonGrid.Size = New-Object Drawing.Size(848, 285)
+  $lessonGrid.ReadOnly = $true
+  $lessonGrid.AllowUserToAddRows = $false
+  $lessonGrid.AllowUserToDeleteRows = $false
+  $lessonGrid.AllowUserToResizeRows = $false
+  $lessonGrid.AutoGenerateColumns = $false
+  $lessonGrid.SelectionMode = "FullRowSelect"
+  $lessonGrid.MultiSelect = $false
+  $lessonGrid.RowHeadersVisible = $false
+  $lessonGrid.BackgroundColor = $surface
+  $lessonGrid.BorderStyle = "FixedSingle"
+  $lessonGrid.GridColor = $border
+  $lessonGrid.EnableHeadersVisualStyles = $false
+  $lessonGrid.ColumnHeadersDefaultCellStyle.BackColor = $surface2
+  $lessonGrid.ColumnHeadersDefaultCellStyle.ForeColor = $text
+  $lessonGrid.ColumnHeadersDefaultCellStyle.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+  $lessonGrid.ColumnHeadersHeight = 36
+  $lessonGrid.DefaultCellStyle.BackColor = $surface
+  $lessonGrid.DefaultCellStyle.ForeColor = $text
+  $lessonGrid.DefaultCellStyle.SelectionBackColor = $discord
+  $lessonGrid.DefaultCellStyle.SelectionForeColor = $text
+  $lessonGrid.AlternatingRowsDefaultCellStyle.BackColor = $surface2
+  $lessonGrid.RowTemplate.Height = 34
+  $dialog.Controls.Add($lessonGrid)
+
+  foreach ($columnInfo in @(
+    @{ Name = "Bài"; Width = 70 },
+    @{ Name = "Tiêu đề"; Width = 440 },
+    @{ Name = "Thời lượng"; Width = 100 },
+    @{ Name = "Nguồn"; Width = 190 }
+  )) {
+    $column = New-Object Windows.Forms.DataGridViewTextBoxColumn
+    $column.HeaderText = $columnInfo.Name
+    $column.Width = $columnInfo.Width
+    if ($columnInfo.Name -eq "Tiêu đề") { $column.AutoSizeMode = "Fill" }
+    [void]$lessonGrid.Columns.Add($column)
+  }
+
+  $closeImportButton = New-Object Windows.Forms.Button
+  $closeImportButton.Text = "ĐÓNG"
+  $closeImportButton.Size = New-Object Drawing.Size(110, 36)
+  $closeImportButton.Location = New-Object Drawing.Point(624, 596)
+  $closeImportButton.FlatStyle = "Flat"
+  $closeImportButton.BackColor = $surface
+  $closeImportButton.ForeColor = $muted
+  $closeImportButton.FlatAppearance.BorderColor = $border
+  $closeImportButton.DialogResult = [Windows.Forms.DialogResult]::Cancel
+  $dialog.Controls.Add($closeImportButton)
+
+  $startImportButton = New-Object Windows.Forms.Button
+  $startImportButton.Text = "NHẬP KHÓA"
+  $startImportButton.Size = New-Object Drawing.Size(140, 36)
+  $startImportButton.Location = New-Object Drawing.Point(734, 596)
+  $startImportButton.FlatStyle = "Flat"
+  $startImportButton.BackColor = $success
+  $startImportButton.ForeColor = $bg
+  $startImportButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
+  $startImportButton.FlatAppearance.BorderColor = $success
+  $startImportButton.Enabled = $false
+  $dialog.Controls.Add($startImportButton)
+
+  $invalidatePlan = {
+    $dialog.Tag = $null
+    $startImportButton.Enabled = $false
+    $planLabel.Text = "CẦN QUÉT LẠI THƯ MỤC"
+    $planLabel.ForeColor = $muted
+  }
+  $folderBox.Add_TextChanged($invalidatePlan)
+  $courseTitleBox.Add_TextChanged($invalidatePlan)
+  $courseIdBox.Add_TextChanged($invalidatePlan)
+  $preferVietnameseBox.Add_CheckedChanged($invalidatePlan)
+  $reuseHlsBox.Add_CheckedChanged($invalidatePlan)
+
+  $browseFolderButton.Add_Click({
+    $picker = New-Object Windows.Forms.FolderBrowserDialog
+    $picker.Description = "Chọn thư mục gốc chứa toàn bộ video khóa học"
+    $picker.ShowNewFolderButton = $false
+    if ([IO.Directory]::Exists($folderBox.Text)) { $picker.SelectedPath = $folderBox.Text }
+    if ($picker.ShowDialog($dialog) -eq [Windows.Forms.DialogResult]::OK) {
+      $folderBox.Text = $picker.SelectedPath
+      $name = [IO.Path]::GetFileName($picker.SelectedPath.TrimEnd('\'))
+      $courseTitleBox.Text = $name
+      $courseIdBox.Text = New-UniqueCourseId $name @($script:Catalog.courses)
+    }
+    $picker.Dispose()
+  })
+
+  $scanFolderButton.Add_Click({
+    try {
+      $dialog.UseWaitCursor = $true
+      $scanFolderButton.Enabled = $false
+      $browseFolderButton.Enabled = $false
+      $lessonGrid.Rows.Clear()
+      $plan = Get-StreamFolderPlan $folderBox.Text.Trim() $courseIdBox.Text.Trim() $courseTitleBox.Text.Trim() $preferVietnameseBox.Checked $reuseHlsBox.Checked
+      foreach ($lesson in @($plan.lessons)) {
+        $source = if ($lesson.sourceHls) { "HLS có sẵn · $([string]$lesson.language)" } else { "Sẽ băm 1080p · $([string]$lesson.language)" }
+        [void]$lessonGrid.Rows.Add([string]$lesson.id, [string]$lesson.title, [string]$lesson.duration, $source)
+      }
+      $dialog.Tag = $plan
+      $planLabel.Text = "$($plan.lessonCount) BÀI  ·  DÙNG LẠI $($plan.reusedCount) HLS  ·  CẦN BĂM $($plan.packageCount)"
+      $planLabel.ForeColor = $success
+      $startImportButton.Enabled = $true
+    } catch {
+      $planLabel.Text = "QUÉT THẤT BẠI"
+      $planLabel.ForeColor = $danger
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể quét thư mục", "OK", "Error") | Out-Null
+    } finally {
+      $dialog.UseWaitCursor = $false
+      $scanFolderButton.Enabled = $true
+      $browseFolderButton.Enabled = $true
+    }
+  })
+
+  $startImportButton.Add_Click({
+    if ($null -eq $dialog.Tag) { return }
+    try {
+      $startInfo = New-StreamImportStartInfo $folderBox.Text.Trim() $courseIdBox.Text.Trim() $courseTitleBox.Text.Trim() $preferVietnameseBox.Checked $reuseHlsBox.Checked $false
+      $script:SyncRunning = $true
+      $syncButton.Enabled = $false
+      $accessButton.Enabled = $false
+      $listToolbar.Enabled = $false
+      $courseGrid.Enabled = $false
+      $editor.Enabled = $false
+      $script:ImportCourseId = $courseIdBox.Text.Trim()
+      $script:ImportProcess = New-Object Diagnostics.Process
+      $script:ImportProcess.StartInfo = $startInfo
+      if (-not $script:ImportProcess.Start()) { throw "Không thể khởi chạy tiến trình nhập STREAM." }
+      $script:ImportStdoutTask = $script:ImportProcess.StandardOutput.ReadToEndAsync()
+      $script:ImportStderrTask = $script:ImportProcess.StandardError.ReadToEndAsync()
+      $statusLabel.Text = "Đang nhập khóa STREAM..."
+      $statusLabel.ForeColor = $muted
+      Write-Log "Bắt đầu nhập STREAM '$($courseTitleBox.Text.Trim())' từ ổ $([IO.Path]::GetPathRoot($folderBox.Text.Trim()))."
+      $importTimer.Start()
+      $dialog.DialogResult = [Windows.Forms.DialogResult]::OK
+      $dialog.Close()
+    } catch {
+      if ($null -ne $script:ImportProcess) { $script:ImportProcess.Dispose(); $script:ImportProcess = $null }
+      $script:ImportStdoutTask = $null
+      $script:ImportStderrTask = $null
+      $script:ImportCourseId = ""
+      $script:SyncRunning = $false
+      $syncButton.Enabled = $true
+      $accessButton.Enabled = $true
+      $listToolbar.Enabled = $true
+      $courseGrid.Enabled = $true
+      $editor.Enabled = $true
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể nhập khóa STREAM", "OK", "Error") | Out-Null
+    }
+  })
+
+  $dialog.CancelButton = $closeImportButton
+  [void]$dialog.ShowDialog($form)
+  $dialog.Dispose()
+})
 $accessButton.Add_Click({
   if ($script:SyncRunning) { return }
   $options = @(Get-GoogleAccessOptions)
@@ -1614,7 +2013,7 @@ $form.Add_FormClosing({
   param($sender, $eventArgs)
   if ($script:SyncRunning) {
     $eventArgs.Cancel = $true
-    [Windows.Forms.MessageBox]::Show("Đang đồng bộ Discord. Hãy chờ tiến trình hoàn tất.", "Nixart", "OK", "Information") | Out-Null
+    [Windows.Forms.MessageBox]::Show("Hệ thống đang xử lý. Hãy chờ tiến trình hoàn tất.", "Nixart", "OK", "Information") | Out-Null
   }
 })
 
@@ -1636,7 +2035,10 @@ try {
     if ($driveFolderBox.Top -lt $deliveryBox.Bottom) { throw "Ô thư mục Drive đang chồng lên danh sách hình thức học." }
     if ($courseGrid.RowTemplate.Height -ne 40) { throw "Hàng catalog phải cao 40px." }
     if ($saveButton.Bottom -gt $editorHeader.ClientSize.Height -or $cancelButton.Bottom -gt $editorHeader.ClientSize.Height) { throw "Nút lưu hoặc hủy nằm ngoài header trình sửa." }
-    if ($deleteButton.Parent -ne $listToolbar -or $newButton.Bounds.IntersectsWith($deleteButton.Bounds)) { throw "Nút tạo mới và xóa bài đăng sai vị trí hoặc đang chồng nhau." }
+    if ($deleteButton.Parent -ne $listToolbar -or $importButton.Parent -ne $listToolbar -or
+        $importButton.Bounds.IntersectsWith($newButton.Bounds) -or $newButton.Bounds.IntersectsWith($deleteButton.Bounds)) {
+      throw "Các nút catalog sai vị trí hoặc đang chồng nhau."
+    }
     if ($deleteButton.Enabled) { throw "Nút xóa phải tắt khi chưa chọn khóa học." }
     if ($accessButton.Parent -ne $header -or $statusLabel.Bounds.IntersectsWith($accessButton.Bounds) -or $accessButton.Bounds.IntersectsWith($syncButton.Bounds)) { throw "Nút cấp quyền email sai vị trí hoặc đang chồng nhau." }
     if ($statusLabel.Bottom -gt $header.ClientSize.Height -or $accessButton.Bottom -gt $header.ClientSize.Height -or $syncButton.Bottom -gt $header.ClientSize.Height) { throw "Điều khiển header nằm ngoài khung." }
