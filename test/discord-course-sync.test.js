@@ -58,6 +58,11 @@ test("payment button fails closed unless every sale flag is verified", () => {
   assert.equal(paymentButton(drive).disabled, false);
   assert.equal(buildForumPost(drive).message.embeds[0].fields[1].value, "DRIVE");
   assert.equal(buildForumPost({ ...drive, driveFolderId: "" }).message.components[0].components[0].disabled, true);
+
+  const free = { ...base, saleEnabled: false, freeAccess: true };
+  assert.deepEqual(paymentButton(free), { type: 2, style: 3, label: "Học miễn phí", custom_id: "free_course:blender", disabled: false });
+  assert.equal(buildForumPost(free).message.embeds[0].fields[0].value, "Đang chia sẻ miễn phí");
+  assert.equal(buildForumPost(free).message.embeds[0].fields[3].value, "Miễn phí");
 });
 
 test("course cover and preview accept safe HTTPS URLs only", () => {
@@ -156,6 +161,8 @@ test("catalog validation blocks malformed data and mass archive accidents", () =
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "drive" }] }), /deliveryMode/);
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "DRIVE", streamAvailable: true }] }), /không khớp/);
   assert.throws(() => validateCatalogForSync({ courses: [{ ...course, deliveryMode: "DRIVE", driveFolderId: "bad" }] }), /driveFolderId/);
+  assert.throws(() => validateCatalogForSync({ courses: [{ ...course, freeAccess: "yes" }] }), /freeAccess/);
+  assert.throws(() => validateCatalogForSync({ courses: [{ ...course, freeAccess: true, saleEnabled: true }] }), /Free course/);
 });
 
 test("forum upsert indexes only starter posts authored by this bot", async () => {

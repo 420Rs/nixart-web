@@ -249,7 +249,8 @@ function Get-CourseValidationError {
     [bool]$HasPublishedLesson,
     [string]$DriveFolderValue,
     [string]$ImageUrl,
-    [string]$PreviewUrl
+    [string]$PreviewUrl,
+    [bool]$FreeAccess = $false
   )
 
   if ([string]::IsNullOrWhiteSpace($Title)) { return "Hãy nhập tên khóa học." }
@@ -266,6 +267,11 @@ function Get-CourseValidationError {
   if ($SaleEnabled -and $Price -le 0) { return "Muốn mở thanh toán, giá khóa học phải lớn hơn 0." }
   if ($SaleEnabled -and $DeliveryMode -eq "NON-STREAM") { return "Khóa NON-STREAM chưa có cách giao nội dung nên không thể mở thanh toán." }
   if ($SaleEnabled -and $DeliveryMode -eq "STREAM" -and -not $HasPublishedLesson) { return "Muốn mở thanh toán STREAM, khóa học phải có ít nhất một bài HLS đã published." }
+  if ($FreeAccess -and $SaleEnabled) { return "Khóa học miễn phí không thể đồng thời mở thanh toán." }
+  if ($FreeAccess -and -not $Published) { return "Muốn chia sẻ miễn phí, khóa học phải được công khai trên web." }
+  if ($FreeAccess -and -not $RightsVerified) { return "Muốn chia sẻ miễn phí, bạn phải xác nhận quyền phân phối khóa học." }
+  if ($FreeAccess -and $DeliveryMode -ne "STREAM") { return "Chia sẻ miễn phí hiện chỉ áp dụng cho khóa STREAM." }
+  if ($FreeAccess -and -not $HasPublishedLesson) { return "Khóa miễn phí phải có ít nhất một bài HLS đã published." }
   if ($DeliveryMode -eq "DRIVE" -and -not (Resolve-DriveFolderId $DriveFolderValue)) { return "Khóa DRIVE cần folder ID hoặc URL thư mục drive.google.com hợp lệ." }
   if ($ImageUrl.Length -gt 2000 -or -not (Test-HttpsUrl $ImageUrl 2000)) { return "URL ảnh bìa phải là liên kết HTTPS hợp lệ (tối đa 2.000 ký tự)." }
   if ($PreviewUrl.Length -gt 512 -or -not (Test-HttpsUrl $PreviewUrl 512)) { return "Link preview phải là liên kết HTTPS hợp lệ (tối đa 512 ký tự)." }
@@ -303,6 +309,8 @@ function Invoke-SelfTest {
   if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $false "DRIVE" $false "invalid" "" "")) { throw "Kiểm tra thư mục DRIVE thất bại" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "DRIVE" $false $folderId "" "") { throw "Khóa DRIVE hợp lệ không thể mở bán" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "") { throw "Khóa STREAM hợp lệ không thể mở bán" }
+  if (Get-CourseValidationError "A" "" 100 "full" $true $true $false "STREAM" $true "" "" "" $true) { throw "Khóa STREAM miễn phí hợp lệ không thể lưu" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "" $true)) { throw "Không chặn khóa vừa miễn phí vừa mở bán" }
   if (Get-CourseValidationError "A" "" 0 "full" $true $true $false "NON-STREAM" $false "" "" "") { throw "Khóa NON-STREAM hợp lệ không thể công khai" }
 
   $deleteCatalog = [pscustomobject][ordered]@{
@@ -802,6 +810,20 @@ $saleBox.Location = New-Object Drawing.Point(18, 468)
 $saleBox.FlatStyle = "Flat"
 $editorBody.Controls.Add($saleBox)
 
+$freeBox = New-Object Windows.Forms.CheckBox
+$freeBox.Text = "Chia sẻ khóa học miễn phí (không yêu cầu thanh toán)"
+$freeBox.AutoSize = $true
+$freeBox.Location = New-Object Drawing.Point(18, 492)
+$freeBox.FlatStyle = "Flat"
+$editorBody.Controls.Add($freeBox)
+$freeBox.Add_CheckedChanged({
+  if ($freeBox.Checked) { $saleBox.Checked = $false }
+  $saleBox.Enabled = -not $freeBox.Checked
+})
+$saleBox.Add_CheckedChanged({
+  if ($saleBox.Checked) { $freeBox.Checked = $false }
+})
+
 function Write-Log {
   param([string]$Message)
   $outputBox.AppendText(("[{0}] {1}{2}" -f (Get-Date -Format "HH:mm:ss"), $Message, [Environment]::NewLine))
@@ -913,6 +935,7 @@ function Clear-Editor {
   $rightsBox.Checked = $false
   $publishedBox.Checked = $false
   $saleBox.Checked = $false
+  $freeBox.Checked = $false
   $idLabel.Text = "MÃ KHÓA HỌC  ·  SẼ TẠO KHI LƯU"
   $saveButton.Text = "THÊM KHÓA HỌC"
   $deleteButton.Enabled = $false
@@ -931,7 +954,7 @@ function Refresh-CourseList {
   $script:DeliveryFingerprint = $deliverySnapshot.Fingerprint
   $courseGrid.Rows.Clear()
   foreach ($course in @($script:Catalog.courses)) {
-    $price = if ([decimal]$course.price -gt 0) { "{0:N0}đ" -f [decimal]$course.price } else { "—" }
+    $price = if ($course.freeAccess -eq $true) { "Miễn phí" } elseif ([decimal]$course.price -gt 0) { "{0:N0}đ" -f [decimal]$course.price } else { "—" }
     $hasPublishedLesson = @($course.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
     $deliveryMode = Get-CourseDeliveryMode $course
     $deliveryReady = switch ($deliveryMode) {
@@ -948,7 +971,7 @@ function Refresh-CourseList {
       $deliveryMode,
       $(if ($course.rightsVerified -eq $true) { "Có" } else { "Chưa" }),
       $(if ($course.published -eq $true) { "Có" } else { "Chưa" }),
-      $(if ($saleReady) { "Có" } else { "Chưa" })
+      $(if ($course.freeAccess -eq $true) { "Miễn phí" } elseif ($saleReady) { "Có" } else { "Chưa" })
     )
     $courseGrid.Rows[$rowIndex].Tag = [string]$course.id
   }
@@ -985,6 +1008,7 @@ function Load-CourseIntoEditor {
   $rightsBox.Checked = $course.rightsVerified -eq $true
   $publishedBox.Checked = $course.published -eq $true
   $saleBox.Checked = $course.saleEnabled -eq $true
+  $freeBox.Checked = $course.freeAccess -eq $true
   $idLabel.Text = "MÃ KHÓA HỌC  ·  $($script:EditingCourseId)"
   $saveButton.Text = "LƯU THAY ĐỔI"
   $deleteButton.Enabled = $true
@@ -1239,7 +1263,7 @@ $saveButton.Add_Click({
       @($script:Catalog.courses) | Where-Object { [string]$_.id -eq $script:EditingCourseId } | Select-Object -First 1
     } else { $null }
     $hasPublishedLesson = $null -ne $editingCourse -and @($editingCourse.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
-    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $deliveryMode $hasPublishedLesson $driveFolderValue $imageUrl $previewUrl
+    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $deliveryMode $hasPublishedLesson $driveFolderValue $imageUrl $previewUrl $freeBox.Checked
     if ($errorMessage) {
       [Windows.Forms.MessageBox]::Show($errorMessage, "Dữ liệu chưa hợp lệ", "OK", "Warning") | Out-Null
       return
@@ -1274,6 +1298,7 @@ $saveButton.Add_Click({
         deliveryMode = "NON-STREAM"
         streamAvailable = $false
         saleEnabled = $false
+        freeAccess = $false
         published = $false
         forumVisible = $true
         rightsVerified = $false
@@ -1291,6 +1316,7 @@ $saveButton.Add_Click({
     Set-CourseProperty $course "deliveryMode" $deliveryMode
     Set-CourseProperty $course "streamAvailable" ($deliveryMode -eq "STREAM")
     Set-CourseProperty $course "saleEnabled" ([bool]$saleBox.Checked)
+    Set-CourseProperty $course "freeAccess" ([bool]$freeBox.Checked)
     Set-CourseProperty $course "forumVisible" $true
     Set-CourseProperty $course "rightsVerified" ([bool]$rightsBox.Checked)
     Set-CourseProperty $course "published" ([bool]$publishedBox.Checked)

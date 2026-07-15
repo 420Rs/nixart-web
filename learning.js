@@ -52,6 +52,8 @@ function validCatalog(catalog) {
       && Number.isSafeInteger(item.price) && item.price >= 0 && item.price <= 2_000_000_000
       && ["basic", "full"].includes(item.planTier)
       && ["published", "forumVisible", "rightsVerified", "streamAvailable", "saleEnabled"].every(field => typeof item[field] === "boolean")
+      && (item.freeAccess === undefined || typeof item.freeAccess === "boolean")
+      && !(item.freeAccess === true && item.saleEnabled === true)
       && (item.deliveryMode === undefined || DELIVERY_MODES.includes(item.deliveryMode))
       && (item.deliveryMode === undefined || item.streamAvailable === (item.deliveryMode === "STREAM"))
       // Folder IDs live in the ignored private delivery file, never in the public catalog.
@@ -143,7 +145,7 @@ function effectiveDeliveryMode(course) {
 }
 
 function isCourseSaleReady(course) {
-  return course?.saleEnabled === true && Number.isSafeInteger(course?.price) && course.price > 0
+  return course?.freeAccess !== true && course?.saleEnabled === true && Number.isSafeInteger(course?.price) && course.price > 0
     && ["DRIVE", "STREAM"].includes(effectiveDeliveryMode(course));
 }
 
@@ -192,6 +194,7 @@ function publicCatalog() {
       // Keep the old flag for landing clients deployed before deliveryMode.
       streamAvailable: effectiveDeliveryMode(course) === "STREAM",
       saleEnabled: isCourseSaleReady(course),
+      freeAccess: course.freeAccess === true && isCourseContentReady(course),
       imageUrl: publicUrl(course.imageUrl, 2000),
       previewUrl: publicUrl(course.previewUrl, 512),
       lessons: (effectiveDeliveryMode(course) === "STREAM" ? course.lessons || [] : []).filter(item => item.published).map(lesson => ({
@@ -547,6 +550,7 @@ async function getUserEntitlements(user) {
 }
 
 async function hasCourseAccess(user, course) {
+  if (course?.freeAccess === true && isCourseContentReady(course)) return true;
   return canAccessCourse(await getUserEntitlements(user), course);
 }
 

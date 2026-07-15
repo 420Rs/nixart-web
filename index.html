@@ -561,7 +561,7 @@
         delivery.dataset.delivery = deliveryMode;
         delivery.textContent = deliveryMode;
         const price = document.createElement("span");
-        price.textContent = formatMoney(course.price);
+        price.textContent = course.freeAccess === true ? "Miễn phí" : formatMoney(course.price);
         meta.append(code, delivery, price);
         const title = document.createElement("h3");
         title.textContent = course.name || course.title || `Khóa học ${index + 1}`;
@@ -580,10 +580,12 @@
         }
         const link = document.createElement("a");
         link.className = "secondary-link";
-        link.href = discordUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
+        const freeLesson = course.freeAccess === true ? course.lessons?.[0] : null;
+        link.href = freeLesson ? "/learn?" + new URLSearchParams({ course: course.id, lesson: freeLesson.id }) : discordUrl;
+        link.target = freeLesson ? "_self" : "_blank";
+        link.rel = freeLesson ? "" : "noopener noreferrer";
         link.textContent = course.saleEnabled === true ? "Mua trên Discord ↗" : "Xem trong Discord ↗";
+        if (freeLesson) link.textContent = "Học miễn phí →";
         actions.append(link);
         card.append(meta, title, copy, actions);
         return card;

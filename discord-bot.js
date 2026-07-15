@@ -145,6 +145,20 @@ async function chooseLesson(interaction) {
   });
 }
 
+async function freeCourseButton(interaction) {
+  const id = interaction.customId.slice("free_course:".length);
+  const course = findCourse(id);
+  const lessons = (course?.lessons || []).filter(lesson => lesson.published);
+  if (!course || course.freeAccess !== true || !lessons.length) {
+    return interaction.reply({ content: "Khóa học này hiện không còn chia sẻ miễn phí.", flags: MessageFlags.Ephemeral });
+  }
+  return interaction.reply({
+    content: `**${course.title}** — chọn bài học:`,
+    components: [row(`learn_lesson:${course.id}`, "Chọn bài học", lessons.map(lesson => option(lesson.title, lesson.id)))],
+    flags: MessageFlags.Ephemeral
+  });
+}
+
 function driveEmailModal(course) {
   return new ModalBuilder()
     .setCustomId(`drive_email:${course.id}`)
@@ -234,6 +248,7 @@ async function handleInteraction(interaction) {
       if (interaction.customId === "buy_product") return buyProduct(interaction);
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith("drive_email:")) return driveEmailSubmit(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("free_course:")) return freeCourseButton(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("buy_course:")) return buyCourseButton(interaction);
   } catch (error) {
     console.error("Discord interaction error", error);

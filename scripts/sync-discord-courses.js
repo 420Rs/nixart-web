@@ -1,5 +1,5 @@
 const { ChannelType, REST, Routes } = require("discord.js");
-const { DELIVERY_MODES, driveFolderId, effectiveDeliveryMode, getCatalog, isForumCourseSaleReady } = require("../learning");
+const { DELIVERY_MODES, driveFolderId, effectiveDeliveryMode, getCatalog, isCourseContentReady, isForumCourseSaleReady } = require("../learning");
 
 const DEFAULT_CHANNEL_ID = "1526640814472691804";
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
@@ -65,6 +65,8 @@ function validateCatalogForSync(catalog) {
     for (const field of ["forumVisible", "published", "rightsVerified", "streamAvailable", "saleEnabled"]) {
       if (typeof course[field] !== "boolean") throw new Error(`${field} phải là boolean ở khóa học: ${id}`);
     }
+    if (course.freeAccess !== undefined && typeof course.freeAccess !== "boolean") throw new Error(`freeAccess must be boolean: ${id}`);
+    if (course.freeAccess === true && course.saleEnabled === true) throw new Error(`Free course cannot also accept payment: ${id}`);
     if (course.deliveryMode !== undefined && !DELIVERY_MODES.includes(course.deliveryMode)) {
       throw new Error(`deliveryMode không hợp lệ ở khóa học: ${id}`);
     }
@@ -96,9 +98,11 @@ function validateCatalogForSync(catalog) {
 
 function paymentButton(course) {
   const id = String(course?.id || "").trim();
-  const customId = `buy_course:${id}`;
+  const freeEnabled = course?.forumVisible === true && course?.freeAccess === true && isCourseContentReady(course);
+  const customId = `${freeEnabled ? "free_course" : "buy_course"}:${id}`;
   if (!id || customId.length > 100) throw new Error(`Course id không hợp lệ cho Discord button: ${id || "(trống)"}`);
 
+  if (freeEnabled) return { type: 2, style: 3, label: "Học miễn phí", custom_id: customId, disabled: false };
   const enabled = isForumCourseSaleReady(course);
   return {
     type: 2,
@@ -170,6 +174,7 @@ function buildForumPost(course, tagIds = {}) {
   const lessonCount = effectiveDeliveryMode(course) === "STREAM" ? publishedLessonCount(course) : 0;
   const price = Number(course?.price);
   const saleReady = isForumCourseSaleReady(course);
+  const freeReady = course?.forumVisible === true && course?.freeAccess === true && isCourseContentReady(course);
   const embed = {
     title: truncateText(name, 256),
     description,
@@ -183,6 +188,10 @@ function buildForumPost(course, tagIds = {}) {
     footer: { text: truncateText(`Mã khóa học: ${course.id}`, 2048) },
   };
   const imageUrl = safeHttpsUrl(course?.imageUrl, 2000);
+  if (freeReady) {
+    embed.fields[0].value = "Đang chia sẻ miễn phí";
+    embed.fields[3].value = "Miễn phí";
+  }
   if (course?.rightsVerified === true && imageUrl) embed.image = { url: imageUrl };
   const components = [paymentButton(course)];
   const preview = previewButton(course);

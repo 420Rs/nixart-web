@@ -8,7 +8,7 @@ process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-cha
 
 const {
   canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess,
-  getLearningProgress, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
+  getLearningProgress, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
   isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, saveLearningProgress
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
@@ -75,6 +75,16 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(googleEmail("user\u202E@example.com"), "");
   assert.equal(escapeDiscordMarkdown("a_b*`c|"), "a\\_b\\*\\`c\\|");
   assert.equal(escapeDiscordMarkdown("[duyệt](https://evil.example)"), "\\[duyệt\\]\\(https://evil.example\\)");
+});
+
+test("free stream course grants access without a purchase", async () => {
+  const course = {
+    id: "free-course", planTier: "full", freeAccess: true, published: true, rightsVerified: true,
+    deliveryMode: "STREAM", streamAvailable: true,
+    lessons: [{ id: "lesson-1", title: "Bài 1", published: true }]
+  };
+  assert.equal(await hasCourseAccess({}, course), true);
+  assert.equal(isCourseSaleReady({ ...course, saleEnabled: true, price: 50000 }), false);
 });
 
 test("learning progress stores one bounded resume point per course", async () => {
