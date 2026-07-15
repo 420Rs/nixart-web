@@ -294,33 +294,66 @@ test("Google OAuth requests identity only and verifies signed claims strictly", 
   }
 });
 
-test("Google access grant CLI requires one product selector", () => {
+test("Google access grant CLI accepts individual courses only", () => {
   const { argumentsFrom } = require("../scripts/grant-google-access");
   assert.deepEqual(argumentsFrom(["--email", "user@gmail.com", "--course", "course-a"]), {
     email: "user@gmail.com",
     course: "course-a"
   });
-  assert.throws(() => argumentsFrom(["--email", "user@gmail.com"]), /đúng một/);
-  assert.throws(() => argumentsFrom(["--email", "user@gmail.com", "--course", "a", "--plan", "full"]), /đúng một/);
+  assert.throws(() => argumentsFrom(["--email", "user@gmail.com"]), /--course/);
+  assert.throws(() => argumentsFrom(["--email", "user@gmail.com", "--plan", "full"]), /--plan/);
 });
 
-test("Google access grant creates a pending UUID-bound order and rejects weak existing identities", async () => {
+test("Google email access grants only individual stream courses to verified identities", async t => {
+  const catalogPath = path.resolve(__dirname, "..", "content", "catalog.json");
+  const deliveryPath = path.resolve(__dirname, "..", "content", "delivery.private.json");
+  const catalogSource = Buffer.from(JSON.stringify({
+    name: "NIXART test", tagline: "test", discordUrl: "https://discord.gg/test", plans: [],
+    courses: [{
+      id: "course-a", title: "Alpha", description: "test", price: 50000, planTier: "full",
+      published: true, forumVisible: true, rightsVerified: true, deliveryMode: "STREAM",
+      streamAvailable: true, saleEnabled: true, imageUrl: "", previewUrl: "",
+      lessons: [{ id: "lesson-1", title: "Lesson", published: true }]
+    }]
+  }));
+  const readFileSync = fs.readFileSync;
+  const statSync = fs.statSync;
+  t.mock.method(fs, "statSync", function (file, ...args) {
+    if (path.resolve(String(file)) === catalogPath) return { size: catalogSource.length, mtimeMs: 1 };
+    return statSync.call(this, file, ...args);
+  });
+  t.mock.method(fs, "readFileSync", function (file, ...args) {
+    const resolved = path.resolve(String(file));
+    if (resolved === catalogPath) return catalogSource;
+    if (resolved === deliveryPath) return args[0] ? JSON.stringify({ driveFolders: {} }) : Buffer.from(JSON.stringify({ driveFolders: {} }));
+    return readFileSync.call(this, file, ...args);
+  });
+
+  await assert.rejects(
+    grantEmailAccess({ email: "user@gmail.com", scope: "full", value: "full" }, async () => {
+      throw new Error("Plan rejection must happen before SQL");
+    }),
+    /từng khóa STREAM/
+  );
+
   const queries = [];
   const pendingSql = async (strings, ...values) => {
     const source = strings.join(" ? ");
     queries.push({ source, values });
     if (source.includes("FROM app_users")) return [];
-    if (source.includes("INSERT INTO purchase_orders")) return [{ access_expires_at: "2030-01-01T00:00:00.000Z" }];
+    if (source.includes("SELECT purchase_code")) return [];
+    if (source.includes("INSERT INTO purchase_orders")) return [];
     throw new Error(`Unexpected SQL: ${source.slice(0, 80)}`);
   };
-  const granted = await grantEmailAccess({ email: " USER@GMAIL.COM ", scope: "full", value: "full" }, pendingSql);
+  const granted = await grantEmailAccess({ email: " USER@GMAIL.COM ", scope: "course", value: "course-a" }, pendingSql);
   assert.equal(granted.email, "user@gmail.com");
   assert.equal(granted.userId, "");
+  assert.equal(granted.expiresAt, null);
   assert.equal(granted.reused, false);
   assert.equal(queries.some(query => query.source.includes("'admin-email'") && query.values.includes("user@gmail.com")), true);
 
   await assert.rejects(
-    grantEmailAccess({ email: "user+promo@gmail.com", scope: "full", value: "full" }, pendingSql),
+    grantEmailAccess({ email: "user+promo@gmail.com", scope: "course", value: "course-a" }, pendingSql),
     /không dùng alias \+tag/
   );
 
@@ -330,12 +363,13 @@ test("Google access grant creates a pending UUID-bound order and rejects weak ex
     const source = strings.join(" ? ");
     knownQueryCount += 1;
     if (source.includes("FROM app_users")) return [{ id: knownUserId, authoritative: true }];
-    if (source.includes("INSERT INTO purchase_orders")) return [{ access_expires_at: "2030-01-01T00:00:00.000Z" }];
+    if (source.includes("SELECT purchase_code")) return [];
+    if (source.includes("INSERT INTO purchase_orders")) return [];
     throw new Error("Grant must not run a fallible post-insert sync");
   };
-  const knownGrant = await grantEmailAccess({ email: "known@gmail.com", scope: "full", value: "full" }, knownIdentitySql);
+  const knownGrant = await grantEmailAccess({ email: "known@gmail.com", scope: "course", value: "course-a" }, knownIdentitySql);
   assert.equal(knownGrant.userId, knownUserId);
-  assert.equal(knownQueryCount, 2);
+  assert.equal(knownQueryCount, 3);
 
   const weakIdentitySql = async (strings) => {
     const source = strings.join(" ? ");
@@ -345,7 +379,7 @@ test("Google access grant creates a pending UUID-bound order and rejects weak ex
     throw new Error("The grant must stop before writing an order");
   };
   await assert.rejects(
-    grantEmailAccess({ email: "user@external.example", scope: "full", value: "full" }, weakIdentitySql),
+    grantEmailAccess({ email: "user@external.example", scope: "course", value: "course-a" }, weakIdentitySql),
     /Gmail\/Workspace/
   );
 
@@ -355,7 +389,7 @@ test("Google access grant creates a pending UUID-bound order and rejects weak ex
     throw new Error("An unknown Workspace address must not create an order yet");
   };
   await assert.rejects(
-    grantEmailAccess({ email: "user@studio.example", scope: "full", value: "full" }, unknownWorkspaceSql),
+    grantEmailAccess({ email: "user@studio.example", scope: "course", value: "course-a" }, unknownWorkspaceSql),
     /đăng nhập Google một lần/
   );
 });

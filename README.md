@@ -52,20 +52,19 @@ Trong Discord Developer Portal:
 
 Trong Google Cloud Console, tạo OAuth 2.0 Client loại **Web application**, thêm Authorized redirect URI `https://learn.nixart.io.vn/api/google-auth`, rồi điền `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` và `GOOGLE_OAUTH_REDIRECT_URI` vào `.env`. Chuyển OAuth audience sang Production trước khi mở cho khách; nếu để Testing, chỉ test users đăng nhập được. Tài khoản Google chỉ được chấp nhận khi email đã được Google xác minh.
 
-Với khách không dùng Discord, sau khi đối soát thanh toán có thể cấp khóa hoặc gói trực tiếp cho email Google:
+Với khách không dùng Discord, sau khi đối soát thanh toán có thể cấp quyền mua lẻ từng khóa STREAM cho email Google. Gói tháng Basic/Full vẫn mua và gia hạn qua Discord:
 
 ```powershell
 npm run grant:google -- --email user@gmail.com --course ma-khoa-hoc
-npm run grant:google -- --email user@gmail.com --plan full
 ```
 
-Nếu Gmail/Google Workspace chưa từng đăng nhập, quyền sẽ chờ và tự gắn vào UUID tài khoản ở lần đăng nhập Google đầu tiên. Google Account dùng địa chỉ email của nhà cung cấp khác cần xác minh riêng trước khi cấp quyền vì Google không luôn bảo đảm quyền sở hữu hiện tại của hộp thư đó. Lệnh không dùng email làm khóa phát video và không lưu token Google.
+Nếu Gmail chưa từng đăng nhập, quyền sẽ chờ và tự gắn vào UUID tài khoản ở lần đăng nhập Google đầu tiên. Với Google Workspace, người học cần đăng nhập Google trên web một lần trước khi admin cấp để hệ thống xác minh tổ chức của tài khoản. Google Account dùng địa chỉ email của nhà cung cấp khác cần xác minh riêng trước khi cấp quyền vì Google không luôn bảo đảm quyền sở hữu hiện tại của hộp thư đó. Lệnh không dùng email làm khóa phát video và không lưu token Google.
 
 ## 2. Quản lý và đăng khóa học
 
 Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa/xóa khóa học, dán URL ảnh bìa và link xem trước, chọn cách giao nội dung; mỗi lần lưu sẽ cập nhật web và tự đồng bộ bài đăng forum Discord. Xóa cần xác nhận, gỡ khóa khỏi catalog và xóa đúng bài forum do bot tạo nhưng không xóa file HLS, lịch sử đơn hàng hoặc quyền Drive đã cấp. Các URL phải dùng HTTPS.
 
-Nút `CẤP QUYỀN EMAIL` mở hộp thoại để dán đúng email Google và chọn gói tháng hoặc một khóa STREAM. Mặc định là gói Full 30 ngày; cấp lại gói sẽ cộng thêm thời hạn, còn quyền mua lẻ một khóa không hết hạn. Gmail có thể được cấp trước lần đăng nhập đầu tiên. Với Google Workspace, người học cần đăng nhập Google trên web một lần trước khi admin cấp để hệ thống xác minh tổ chức của tài khoản.
+Nút `CẤP QUYỀN EMAIL` mở hộp thoại để dán đúng email Google và chọn một khóa STREAM mua lẻ; quyền này không hết hạn. Gmail có thể được cấp trước lần đăng nhập đầu tiên. Với Google Workspace, người học cần đăng nhập Google trên web một lần trước khi admin cấp để hệ thống xác minh tổ chức của tài khoản.
 
 - `Gói Basic`: cả gói 200k và 500k đều xem được các khóa STREAM Basic.
 - `Gói Full`: gói 500k xem được toàn bộ khóa STREAM; DRIVE chỉ bán lẻ vì chưa có cơ chế thu hồi quyền thư mục khi gói tháng hết hạn.
@@ -193,7 +192,7 @@ Máy cá nhân dùng cùng `DATABASE_URL` với Render và phải có `SEPAY_API
 
 1. Người dùng chạy `/mua` hoặc bấm nút thanh toán trên forum.
 2. Khóa DRIVE hỏi email Google trước khi tạo QR; khóa STREAM và gói tháng tạo QR ngay.
-3. SePay báo tiền vào: DRIVE cấp quyền xem thư mục, STREAM mua qua Discord mở quyền cho Discord ID. Khách không dùng Discord được admin cấp theo email bằng lệnh ở trên sau khi đối soát.
+3. SePay báo tiền vào: DRIVE cấp quyền xem thư mục, STREAM mua qua Discord mở quyền cho Discord ID. Khách không dùng Discord có thể mua lẻ khóa STREAM và được admin cấp theo email bằng lệnh ở trên sau khi đối soát; gói tháng vẫn xử lý qua Discord.
 4. Với STREAM, người dùng mở liên kết bài học `/learn?...` do Nixart hoặc bot Discord gửi.
 5. Website cho đăng nhập bằng Google hoặc Discord, kiểm quyền rồi cấp cookie phát HLS trong một giờ.
 

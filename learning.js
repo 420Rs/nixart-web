@@ -492,8 +492,10 @@ async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOv
   if (emailDomain === "gmail.com" && emailLocal.includes("+")) {
     throw new Error("Hãy dùng email Gmail chính, không dùng alias +tag");
   }
-  const product = grantProductFor(cleanId(scope), cleanId(value));
-  if (!product || product.deliveryType !== "hls") throw new Error("Chỉ có thể cấp quyền email cho khóa STREAM hoặc gói tháng");
+  const grantScope = cleanId(scope);
+  if (grantScope !== "course") throw new Error("Chỉ có thể cấp quyền email cho từng khóa STREAM");
+  const product = grantProductFor(grantScope, cleanId(value));
+  if (!product) throw new Error("Khóa STREAM không hợp lệ hoặc chưa sẵn sàng");
   if (!sqlOverride) await ensureLearningTables();
   const sql = sqlOverride || db();
 
@@ -512,36 +514,33 @@ async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOv
     throw new Error("Email Workspace cần đăng nhập Google một lần trước khi cấp quyền");
   }
 
-  if (product.scope === "course") {
-    const existing = await sql`
-      SELECT purchase_code, auth_user_id, access_expires_at
-      FROM purchase_orders
-      WHERE delivery_type = 'hls' AND status = 'approved' AND access_scope = 'course'
-        AND course_id = ${product.id}
-        AND (
-          (${Boolean(userId)} AND (auth_user_id = ${userId || null}
-            OR (auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})))
-          OR (${!userId} AND auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})
-        )
-      ORDER BY created_at DESC LIMIT 1
-    `;
-    if (existing[0]) {
-      return {
-        purchaseCode: existing[0].purchase_code,
-        product: product.title,
-        email: normalizedEmail,
-        userId: existing[0].auth_user_id || userId,
-        expiresAt: null,
-        reused: true
-      };
-    }
+  const existing = await sql`
+    SELECT purchase_code, auth_user_id
+    FROM purchase_orders
+    WHERE delivery_type = 'hls' AND status = 'approved' AND access_scope = 'course'
+      AND course_id = ${product.id}
+      AND (
+        (${Boolean(userId)} AND (auth_user_id = ${userId || null}
+          OR (auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})))
+        OR (${!userId} AND auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})
+      )
+    ORDER BY created_at DESC LIMIT 1
+  `;
+  if (existing[0]) {
+    return {
+      purchaseCode: existing[0].purchase_code,
+      product: product.title,
+      email: normalizedEmail,
+      userId: existing[0].auth_user_id || userId,
+      expiresAt: null,
+      reused: true
+    };
   }
 
   const orderId = crypto.randomUUID();
   const purchaseCode = `NIX${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
   const tokenHash = crypto.createHash("sha256").update(crypto.randomBytes(32)).digest("hex");
-  const safeDays = product.scope === "course" ? null : Math.max(1, Math.min(366, Number(product.days || 30)));
-  const rows = await sql`
+  await sql`
     INSERT INTO purchase_orders (
       id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
       email, payer_name, transfer_reference, amount, status, delivery_type,
@@ -550,31 +549,16 @@ async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOv
     ) VALUES (
       ${orderId}, ${purchaseCode}, ${tokenHash}, ${product.id}, ${product.title}, '',
       ${normalizedEmail}, ${String(displayName || normalizedEmail).slice(0, 200)}, 'ADMIN_EMAIL_GRANT',
-      ${product.amount}, 'approved', 'hls', ${userId || null}, NULL, ${product.scope}, ${safeDays},
-      CASE WHEN ${product.scope} = 'course' THEN NULL ELSE
-        GREATEST(
-          NOW(),
-          COALESCE((
-            SELECT MAX(access_expires_at) FROM purchase_orders
-            WHERE delivery_type = 'hls' AND status = 'approved'
-              AND access_scope = ${product.scope}
-              AND (
-                (${Boolean(userId)} AND auth_user_id = ${userId || null})
-                OR (${!userId} AND auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})
-              )
-          ), NOW())
-        ) + (${safeDays || 0} * INTERVAL '1 day')
-      END,
+      ${product.amount}, 'approved', 'hls', ${userId || null}, NULL, ${product.scope}, NULL, NULL,
       NOW(), NOW(), 'admin-email'
     )
-    RETURNING access_expires_at
   `;
   return {
     purchaseCode,
     product: product.title,
     email: normalizedEmail,
     userId,
-    expiresAt: rows[0]?.access_expires_at || null,
+    expiresAt: null,
     reused: false
   };
 }
@@ -600,27 +584,15 @@ function productFor(scope, value) {
 }
 
 function grantProductFor(scope, value) {
-  if (scope === "course") {
-    const course = findCourse(value);
-    if (!course || effectiveDeliveryMode(course) !== "STREAM") return null;
-    return {
-      id: course.id,
-      title: course.title,
-      amount: Number(course.price || 0),
-      scope: "course",
-      days: null,
-      deliveryType: "hls"
-    };
-  }
-  if (!["basic", "full"].includes(scope)) return null;
-  const plan = getCatalog().plans.find(item => item.id === scope);
-  if (!plan) return null;
+  if (scope !== "course") return null;
+  const course = findCourse(value);
+  if (!course || effectiveDeliveryMode(course) !== "STREAM") return null;
   return {
-    id: `plan:${scope}`,
-    title: plan.title,
-    amount: Number(plan.price || 0),
-    scope,
-    days: Number(plan.durationDays || 30),
+    id: course.id,
+    title: course.title,
+    amount: Number(course.price || 0),
+    scope: "course",
+    days: null,
     deliveryType: "hls"
   };
 }
