@@ -177,6 +177,71 @@
       box-shadow: 0 24px 64px rgba(0,0,0,.28);
       animation: reveal .62s .1s cubic-bezier(.22,1,.36,1) both;
     }
+    .learning-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 16px;
+      align-items: start;
+    }
+    .lessons-panel {
+      position: sticky;
+      top: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-deep);
+      box-shadow: 0 24px 64px rgba(0,0,0,.2);
+      animation: reveal .62s .14s cubic-bezier(.22,1,.36,1) both;
+    }
+    .lessons-head {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 15px 17px;
+      border-bottom: 1px solid var(--line);
+    }
+    .lessons-head h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: .92rem;
+      font-weight: 650;
+      letter-spacing: -.02em;
+    }
+    .lessons-head span {
+      color: var(--quiet);
+      font-family: var(--font-mono);
+      font-size: .63rem;
+      white-space: nowrap;
+    }
+    .lesson-list {
+      max-height: min(66vh, 620px);
+      overflow-y: auto;
+      padding: 7px;
+      scrollbar-color: var(--line-strong) transparent;
+      scrollbar-width: thin;
+    }
+    .lesson-list-state { margin: 0; padding: 24px 14px; color: var(--quiet); font-size: .78rem; text-align: center; }
+    .lesson-link {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 52px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .lesson-link:hover { color: var(--ink); background: var(--panel); }
+    .lesson-link.active { color: var(--ink); border-color: var(--line-strong); background: var(--panel); }
+    .lesson-number { color: var(--quiet); font-family: var(--font-mono); font-size: .62rem; text-align: center; }
+    .lesson-link.active .lesson-number { color: var(--success); }
+    .lesson-title { overflow: hidden; font-size: .74rem; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; }
+    .lesson-duration { color: var(--quiet); font-family: var(--font-mono); font-size: .58rem; }
     .video-wrap {
       position: relative;
       aspect-ratio: 16 / 9;
@@ -299,6 +364,12 @@
       .privacy { margin-top: 18px; }
     }
 
+    @media (max-width: 940px) {
+      .learning-grid { grid-template-columns: 1fr; }
+      .lessons-panel { position: static; }
+      .lesson-list { max-height: 380px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         scroll-behavior: auto !important;
@@ -324,7 +395,8 @@
       <div class="secure">Phiên xem được bảo vệ</div>
     </div>
 
-    <div class="theater">
+    <div class="learning-grid">
+      <div class="theater">
       <div class="video-wrap">
         <div class="state" id="loading" role="status"><div class="spinner" aria-hidden="true"></div><h2>Đang kiểm tra quyền học</h2><p>Chỉ mất một chút thời gian.</p></div>
         <div class="state" id="login" hidden><div class="state-icon">NX</div><h2>Đăng nhập để tiếp tục</h2><p id="login-message">Chọn tài khoản gắn với quyền truy cập khóa học của bạn.</p><div class="login-actions"><a class="button" id="google-login-link" href="/api/google-auth">Tiếp tục với Google</a><a class="button secondary" id="discord-login-link" href="/api/discord-auth">Tiếp tục với Discord</a></div></div>
@@ -332,6 +404,11 @@
         <video id="video" controls playsinline preload="metadata" crossorigin="use-credentials" controlslist="nodownload" disablepictureinpicture aria-label="Trình phát bài học"></video>
       </div>
       <div class="video-meta"><p><strong id="meta-title">Nixart</strong> · Phát trực tuyến HLS</p><a class="help" href="/" target="_blank">Cần trợ giúp?</a></div>
+      </div>
+      <aside class="lessons-panel" aria-labelledby="lessons-title">
+        <div class="lessons-head"><h2 id="lessons-title">Nội dung khóa học</h2><span id="lesson-count">Đang tải…</span></div>
+        <nav class="lesson-list" id="lesson-list" aria-label="Danh sách bài học"><p class="lesson-list-state">Đang tải danh sách bài học…</p></nav>
+      </aside>
     </div>
     <p class="privacy">Liên kết bài học gắn với quyền truy cập của tài khoản. Không chia sẻ tài khoản hoặc nội dung ra bên ngoài.</p>
   </main>
@@ -382,6 +459,44 @@
       let body = {};
       try { body = await response.json(); } catch (_) {}
       return { response, body };
+    }
+
+    async function loadLessons() {
+      const list = document.querySelector("#lesson-list");
+      const count = document.querySelector("#lesson-count");
+      try {
+        const catalog = await getJson("/api/catalog");
+        const course = catalog.body.courses?.find(item => item.id === courseId);
+        const lessons = course?.lessons || [];
+        if (!catalog.response.ok || !lessons.length) throw new Error();
+        list.replaceChildren(...lessons.map((lesson, index) => {
+          const link = document.createElement("a");
+          link.className = "lesson-link" + (lesson.id === lessonId ? " active" : "");
+          link.href = "/learn?" + new URLSearchParams({ course: courseId, lesson: lesson.id });
+          if (lesson.id === lessonId) link.setAttribute("aria-current", "page");
+
+          const number = document.createElement("span");
+          number.className = "lesson-number";
+          number.textContent = String(index + 1).padStart(2, "0");
+          const title = document.createElement("span");
+          title.className = "lesson-title";
+          title.textContent = lesson.title;
+          const duration = document.createElement("span");
+          duration.className = "lesson-duration";
+          duration.textContent = lesson.duration || "";
+          link.append(number, title, duration);
+          return link;
+        }));
+        count.textContent = `${lessons.length} bài`;
+        const active = list.querySelector(".active");
+        if (active) list.scrollTop = Math.max(0, active.offsetTop - list.clientHeight / 2);
+      } catch {
+        count.textContent = "";
+        list.replaceChildren(Object.assign(document.createElement("p"), {
+          className: "lesson-list-state",
+          textContent: "Chưa tải được danh sách bài học."
+        }));
+      }
     }
 
     function loadHlsJs() {
@@ -488,6 +603,7 @@
       }
     });
     window.addEventListener("pagehide", () => hls?.destroy());
+    loadLessons();
     start();
   </script>
 </body>
