@@ -347,6 +347,26 @@ async function ensureLearningTables() {
       )
     `;
     await sql`
+      CREATE TABLE IF NOT EXISTS learning_lesson_views (
+        course_id VARCHAR(100) NOT NULL,
+        lesson_id VARCHAR(100) NOT NULL,
+        views BIGINT NOT NULL DEFAULT 0 CHECK (views >= 0),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (course_id, lesson_id)
+      )
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS learning_view_sessions (
+        session_id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        course_id VARCHAR(100) NOT NULL,
+        lesson_id VARCHAR(100) NOT NULL,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS learning_view_sessions_active_idx ON learning_view_sessions (course_id, lesson_id, last_seen_at)`;
+    await sql`
       INSERT INTO learning_entitlements (discord_id, access_scope, course_id, expires_at, last_order_id)
       SELECT DISTINCT ON (discord_id, access_scope, CASE WHEN access_scope = 'course' THEN course_id ELSE '' END)
         discord_id,
@@ -481,6 +501,59 @@ async function saveLearningProgress({ userId, courseId, lessonId, positionSecond
         updated_at = NOW()
   `;
   return { lessonId: safeLessonId, ...progress };
+}
+
+async function getCourseViewStats(courseId, sqlOverride) {
+  const safeCourseId = cleanId(courseId);
+  if (!safeCourseId) return [];
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  const rows = await sql`
+    SELECT counters.lesson_id, counters.views,
+           COUNT(DISTINCT active.user_id)::int AS watching
+    FROM learning_lesson_views counters
+    LEFT JOIN learning_view_sessions active
+      ON active.course_id = counters.course_id AND active.lesson_id = counters.lesson_id
+     AND active.last_seen_at > NOW() - INTERVAL '90 seconds'
+    WHERE counters.course_id = ${safeCourseId}
+    GROUP BY counters.lesson_id, counters.views
+    ORDER BY counters.lesson_id
+  `;
+  return rows.map(row => ({
+    lessonId: String(row.lesson_id || ""),
+    views: Math.max(0, Number(row.views) || 0),
+    watching: Math.max(0, Number(row.watching) || 0)
+  }));
+}
+
+async function recordLessonView({ userId, courseId, lessonId, sessionId }, sqlOverride) {
+  const safeCourseId = cleanId(courseId);
+  const safeLessonId = cleanId(lessonId);
+  if (!validUserId(userId) || !validUserId(sessionId) || !safeCourseId || !safeLessonId) {
+    throw new Error("Phiên xem bài học không hợp lệ");
+  }
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  await sql`
+    WITH inserted AS (
+      INSERT INTO learning_view_sessions (session_id, user_id, course_id, lesson_id)
+      VALUES (${String(sessionId)}::uuid, ${String(userId)}::uuid, ${safeCourseId}, ${safeLessonId})
+      ON CONFLICT (session_id) DO NOTHING
+      RETURNING 1
+    )
+    INSERT INTO learning_lesson_views (course_id, lesson_id, views)
+    SELECT ${safeCourseId}, ${safeLessonId}, 1 FROM inserted
+    ON CONFLICT (course_id, lesson_id) DO UPDATE
+    SET views = learning_lesson_views.views + 1, updated_at = NOW()
+  `;
+  await sql`
+    UPDATE learning_view_sessions
+    SET last_seen_at = NOW()
+    WHERE session_id = ${String(sessionId)}::uuid AND user_id = ${String(userId)}::uuid
+      AND course_id = ${safeCourseId} AND lesson_id = ${safeLessonId}
+  `;
+  const stats = await getCourseViewStats(safeCourseId, sql);
+  return stats.find(item => item.lessonId === safeLessonId) || { lessonId: safeLessonId, views: 0, watching: 0 };
 }
 
 async function claimUserEntitlements(user, sqlOverride) {
@@ -939,6 +1012,7 @@ module.exports = {
   findPlan,
   findSaleCourse,
   getCatalog,
+  getCourseViewStats,
   getEntitlements,
   getLearningProgress,
   getUserEntitlements,
@@ -953,5 +1027,6 @@ module.exports = {
   isForumCourseSaleReady,
   normalizeLearningProgress,
   publicCatalog,
+  recordLessonView,
   saveLearningProgress
 };

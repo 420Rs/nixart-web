@@ -256,7 +256,10 @@
     .lesson-link.active .lesson-number { color: var(--success); }
     .lesson-link.progress:not(.active) .lesson-number { color: var(--success); }
     .lesson-title { overflow: hidden; font-size: .74rem; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; }
+    .lesson-side { display: grid; justify-items: end; gap: 4px; }
     .lesson-duration { color: var(--quiet); font-family: var(--font-mono); font-size: .58rem; }
+    .lesson-views { color: var(--quiet); font-family: var(--font-mono); font-size: .56rem; white-space: nowrap; }
+    .lesson-link.active .lesson-views { color: var(--success); }
     .video-wrap {
       position: relative;
       aspect-ratio: 16 / 9;
@@ -338,6 +341,7 @@
     }
     .video-meta p { margin: 0; }
     .video-meta strong { color: var(--muted); font-weight: 600; }
+    .watch-stats { margin-top: 5px !important; color: var(--success); }
     .help { color: var(--quiet); text-underline-offset: 3px; transition: color .2s ease; }
     .help:hover { color: var(--ink); }
     .privacy {
@@ -418,7 +422,7 @@
         <div class="state" id="error" hidden><div class="state-icon">!</div><h2 id="error-title">Không thể mở bài học</h2><p id="error-message">Hãy thử lại hoặc kiểm tra quyền học của tài khoản.</p><button class="button" id="retry" type="button">Thử lại</button><a class="button secondary" href="/">Về trang chủ</a></div>
         <video id="video" controls playsinline preload="metadata" crossorigin="use-credentials" controlslist="nodownload" disablepictureinpicture aria-label="Trình phát bài học"></video>
       </div>
-      <div class="video-meta"><p><strong id="meta-title">Nixart</strong> · Phát trực tuyến HLS</p><a class="help" href="/" target="_blank">Cần trợ giúp?</a></div>
+      <div class="video-meta"><div><p><strong id="meta-title">Nixart</strong> · Phát trực tuyến HLS</p><p class="watch-stats" id="view-stats">👁 0 đã xem · ● 0 đang xem</p></div><a class="help" href="/" target="_blank">Cần trợ giúp?</a></div>
       </div>
       <aside class="lessons-panel" aria-labelledby="lessons-title">
         <div class="lessons-head"><h2 id="lessons-title">Nội dung khóa học</h2><span id="lesson-count">Đang tải…</span></div>
@@ -439,9 +443,12 @@
     let hls;
     let savedProgress;
     let courseLessons = [];
+    const viewStats = new Map();
+    let currentUserId = "";
     let playbackAuthorized = false;
     let lastProgressSave = 0;
     let resumeHandler;
+    let sessionId;
 
     const states = ["loading", "login", "error"];
     function showState(id) {
@@ -482,6 +489,39 @@
       return { response, body };
     }
 
+    function getViewSessionId() {
+      if (sessionId) return sessionId;
+      const key = `nixart-view:${currentUserId}:${courseId}:${lessonId}`;
+      try {
+        sessionId = sessionStorage.getItem(key);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId || "")) {
+          sessionId = crypto.randomUUID();
+          sessionStorage.setItem(key, sessionId);
+        }
+      } catch (_) {
+        sessionId = crypto.randomUUID();
+      }
+      return sessionId;
+    }
+
+    function renderViewStats(items = []) {
+      for (const item of items) {
+        if (item?.lessonId) viewStats.set(item.lessonId, {
+          views: Math.max(0, Number(item.views) || 0),
+          watching: Math.max(0, Number(item.watching) || 0)
+        });
+      }
+      document.querySelectorAll("#lesson-list [data-lesson-id]").forEach(link => {
+        const stats = viewStats.get(link.dataset.lessonId) || { views: 0, watching: 0 };
+        const node = link.querySelector(".lesson-views");
+        if (!node) return;
+        node.textContent = `👁 ${stats.views.toLocaleString("vi-VN")} · ● ${stats.watching.toLocaleString("vi-VN")}`;
+        node.title = `${stats.views.toLocaleString("vi-VN")} lượt xem · ${stats.watching.toLocaleString("vi-VN")} người đang xem`;
+      });
+      const current = viewStats.get(lessonId) || { views: 0, watching: 0 };
+      document.querySelector("#view-stats").textContent = `👁 ${current.views.toLocaleString("vi-VN")} đã xem · ● ${current.watching.toLocaleString("vi-VN")} đang xem`;
+    }
+
     async function loadLessons() {
       const list = document.querySelector("#lesson-list");
       const count = document.querySelector("#lesson-count");
@@ -508,9 +548,15 @@
           const duration = document.createElement("span");
           duration.className = "lesson-duration";
           duration.textContent = lesson.duration || "";
-          link.append(number, title, duration);
+          const side = document.createElement("span");
+          side.className = "lesson-side";
+          const views = document.createElement("span");
+          views.className = "lesson-views";
+          side.append(duration, views);
+          link.append(number, title, side);
           return link;
         }));
+        renderViewStats();
         count.textContent = `${lessons.length} bài`;
         renderSavedProgress();
         const active = list.querySelector(".active");
@@ -550,9 +596,18 @@
 
     async function loadProgress() {
       const result = await getJson("/api/learning-progress?" + new URLSearchParams({ course: courseId }));
-      if (result.response.ok) savedProgress = result.body.progress || null;
+      if (result.response.ok) {
+        savedProgress = result.body.progress || null;
+        renderViewStats(result.body.views);
+      }
       renderSavedProgress();
       return savedProgress;
+    }
+
+    async function refreshViews() {
+      if (!playbackAuthorized || document.visibilityState !== "visible") return;
+      const result = await getJson("/api/learning-progress?" + new URLSearchParams({ course: courseId }));
+      if (result.response.ok) renderViewStats(result.body.views);
     }
 
     function prepareResume(progress) {
@@ -575,6 +630,7 @@
       const payload = {
         course: courseId,
         lesson: lessonId,
+        sessionId: getViewSessionId(),
         positionSeconds: video.currentTime,
         durationSeconds: video.duration
       };
@@ -586,8 +642,10 @@
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify(payload)
         });
+        const body = await response.json().catch(() => ({}));
         if (response.ok) {
           savedProgress = { lessonId, positionSeconds: Math.floor(video.currentTime), durationSeconds: Math.floor(video.duration) };
+          renderViewStats(body.view ? [body.view] : []);
           renderSavedProgress();
         }
       } catch (_) {}
@@ -654,6 +712,7 @@
         if (!auth.response.ok) throw new Error("Không thể kiểm tra phiên đăng nhập");
 
         const user = auth.body.user || {};
+        currentUserId = String(user.id || "");
         document.querySelector("#user-name").textContent = user.displayName || user.name || user.username || user.email || "Thành viên Nixart";
         document.querySelector("#account").classList.add("visible");
 
@@ -696,10 +755,12 @@
     document.querySelector("#retry").addEventListener("click", start);
     const video = document.querySelector("#video");
     video.addEventListener("timeupdate", () => saveProgress());
+    video.addEventListener("playing", () => saveProgress(true));
     video.addEventListener("pause", () => saveProgress(true));
     video.addEventListener("ended", () => saveProgress(true));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") saveProgress(true);
+      else refreshViews();
     });
     document.querySelector("#logout").addEventListener("click", async () => {
       const button = document.querySelector("#logout");
@@ -720,6 +781,7 @@
       hls?.destroy();
     });
     const lessonsReady = loadLessons();
+    setInterval(refreshViews, 30_000);
     start();
   </script>
 </body>

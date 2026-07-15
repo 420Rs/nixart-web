@@ -9,8 +9,10 @@ test("progress API authenticates, checks access and reads or writes one resume p
     getAuthenticatedUser: auth.getAuthenticatedUser,
     findCourse: learning.findCourse,
     findLesson: learning.findLesson,
+    getCourseViewStats: learning.getCourseViewStats,
     getLearningProgress: learning.getLearningProgress,
     hasCourseAccess: learning.hasCourseAccess,
+    recordLessonView: learning.recordLessonView,
     saveLearningProgress: learning.saveLearningProgress
   };
   let user = { id: "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9" };
@@ -20,6 +22,8 @@ test("progress API authenticates, checks access and reads or writes one resume p
   learning.findLesson = (_, id) => id === "lesson-2" ? { id } : null;
   learning.hasCourseAccess = async () => allowed;
   learning.getLearningProgress = async () => ({ lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600 });
+  learning.getCourseViewStats = async () => [{ lessonId: "lesson-2", views: 12, watching: 2 }];
+  learning.recordLessonView = async input => ({ lessonId: input.lessonId, views: 13, watching: 3 });
   learning.saveLearningProgress = async input => ({
     lessonId: input.lessonId,
     positionSeconds: Math.floor(input.positionSeconds),
@@ -35,14 +39,21 @@ test("progress API authenticates, checks access and reads or writes one resume p
 
   const getResponse = await handler({ httpMethod: "GET", queryStringParameters: { course: "course-a" } });
   assert.equal(getResponse.statusCode, 200);
-  assert.deepEqual(JSON.parse(getResponse.body).progress, { lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600 });
+  assert.deepEqual(JSON.parse(getResponse.body), {
+    progress: { lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600 },
+    views: [{ lessonId: "lesson-2", views: 12, watching: 2 }]
+  });
 
   const postResponse = await handler({
     httpMethod: "POST",
-    body: JSON.stringify({ course: "course-a", lesson: "lesson-2", positionSeconds: 150.7, durationSeconds: 600.2 })
+    body: JSON.stringify({
+      course: "course-a", lesson: "lesson-2", sessionId: "a5a5a5a5-1111-4111-8111-123456789abc",
+      positionSeconds: 150.7, durationSeconds: 600.2
+    })
   });
   assert.equal(postResponse.statusCode, 200);
   assert.deepEqual(JSON.parse(postResponse.body).progress, { lessonId: "lesson-2", positionSeconds: 150, durationSeconds: 600 });
+  assert.deepEqual(JSON.parse(postResponse.body).view, { lessonId: "lesson-2", views: 13, watching: 3 });
 
   allowed = false;
   assert.equal((await handler({ httpMethod: "GET", queryStringParameters: { course: "course-a" } })).statusCode, 403);

@@ -12,6 +12,10 @@ test("learning page renders a safe course lesson picker", () => {
   assert.match(page, /setAttribute\("aria-current", "page"\)/);
   assert.match(page, /fetch\("\/api\/learning-progress"/);
   assert.match(page, /video\.addEventListener\("timeupdate"/);
+  assert.match(page, /video\.addEventListener\("playing"/);
+  assert.match(page, /id="view-stats"/);
+  assert.match(page, /className = "lesson-views"/);
+  assert.match(page, /sessionId: getViewSessionId\(\)/);
   assert.match(page, /video\.currentTime = progress\.positionSeconds/);
   assert.doesNotMatch(page, /lesson-list\.innerHTML/);
 });

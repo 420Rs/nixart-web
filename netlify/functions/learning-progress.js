@@ -3,8 +3,10 @@ const {
   cleanId,
   findCourse,
   findLesson,
+  getCourseViewStats,
   getLearningProgress,
   hasCourseAccess,
+  recordLessonView,
   saveLearningProgress
 } = require("../../learning");
 
@@ -32,7 +34,11 @@ exports.handler = async event => {
     if (!await hasCourseAccess(user, course)) return json(403, { error: "Bạn chưa có quyền truy cập khóa học" });
 
     if (event.httpMethod === "GET") {
-      return json(200, { progress: await getLearningProgress(user.id, course.id) });
+      const [progress, views] = await Promise.all([
+        getLearningProgress(user.id, course.id),
+        getCourseViewStats(course.id)
+      ]);
+      return json(200, { progress, views });
     }
 
     const lesson = findLesson(course, cleanId(payload.lesson));
@@ -44,7 +50,13 @@ exports.handler = async event => {
       positionSeconds: payload.positionSeconds,
       durationSeconds: payload.durationSeconds
     });
-    return json(200, { ok: true, progress });
+    const view = payload.sessionId ? await recordLessonView({
+      userId: user.id,
+      courseId: course.id,
+      lessonId: lesson.id,
+      sessionId: payload.sessionId
+    }) : null;
+    return json(200, { ok: true, progress, view });
   } catch (error) {
     if (/không hợp lệ/i.test(error.message || "")) return json(400, { error: error.message });
     console.error("learning progress error", error);

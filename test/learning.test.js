@@ -8,8 +8,8 @@ process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-cha
 
 const {
   canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess,
-  getLearningProgress, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
-  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, saveLearningProgress
+  getCourseViewStats, getLearningProgress, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
+  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, recordLessonView, saveLearningProgress
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
@@ -111,6 +111,29 @@ test("learning progress stores one bounded resume point per course", async () =>
   assert.deepEqual(await getLearningProgress(userId, "course-a", readSql), {
     lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600, updatedAt: "2026-07-15T00:00:00.000Z"
   });
+});
+
+test("lesson views count one session and active viewers", async () => {
+  const userId = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  const sessionId = "a5a5a5a5-1111-4111-8111-123456789abc";
+  const queries = [];
+  const sql = async (strings, ...values) => {
+    const source = strings.join(" ? ");
+    queries.push({ source, values });
+    if (source.includes("SELECT counters.lesson_id")) {
+      return [{ lesson_id: "lesson-2", views: "17", watching: 3 }];
+    }
+    return [];
+  };
+  assert.deepEqual(await recordLessonView({
+    userId, sessionId, courseId: "course-a", lessonId: "lesson-2"
+  }, sql), { lessonId: "lesson-2", views: 17, watching: 3 });
+  assert.match(queries[0].source, /ON CONFLICT \(session_id\) DO NOTHING/);
+  assert.match(queries[1].source, /last_seen_at = NOW\(\)/);
+  assert.deepEqual(await getCourseViewStats("course-a", sql), [{ lessonId: "lesson-2", views: 17, watching: 3 }]);
+  await assert.rejects(recordLessonView({
+    userId, sessionId: "invalid", courseId: "course-a", lessonId: "lesson-2"
+  }, sql), /không hợp lệ/);
 });
 
 test("catalog reloads only complete JSON and public output uses an allowlist", () => {
