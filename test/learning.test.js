@@ -8,8 +8,8 @@ process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-cha
 
 const {
   canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess,
-  hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
-  isForumCourseSaleReady, publicCatalog
+  getLearningProgress, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
+  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, saveLearningProgress
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
@@ -75,6 +75,32 @@ test("individual, basic and full access follow catalog tier", () => {
   assert.equal(googleEmail("user\u202E@example.com"), "");
   assert.equal(escapeDiscordMarkdown("a_b*`c|"), "a\\_b\\*\\`c\\|");
   assert.equal(escapeDiscordMarkdown("[duyệt](https://evil.example)"), "\\[duyệt\\]\\(https://evil.example\\)");
+});
+
+test("learning progress stores one bounded resume point per course", async () => {
+  assert.deepEqual(normalizeLearningProgress(75.9, 60.4), { positionSeconds: 60, durationSeconds: 60 });
+  assert.throws(() => normalizeLearningProgress(-1, 60), /không hợp lệ/);
+  assert.throws(() => normalizeLearningProgress(null, 60), /không hợp lệ/);
+  assert.throws(() => normalizeLearningProgress(1, 90_000), /không hợp lệ/);
+
+  const userId = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  const writes = [];
+  const writeSql = async (strings, ...values) => {
+    writes.push({ source: strings.join(" ? "), values });
+    return [];
+  };
+  assert.deepEqual(await saveLearningProgress({
+    userId, courseId: "course-a", lessonId: "lesson-2", positionSeconds: 125.8, durationSeconds: 600.2
+  }, writeSql), { lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600 });
+  assert.match(writes[0].source, /ON CONFLICT \(user_id, course_id\) DO UPDATE/);
+  assert.deepEqual(writes[0].values.slice(1), ["course-a", "lesson-2", 125, 600]);
+
+  const readSql = async () => [{
+    lesson_id: "lesson-2", position_seconds: 125, duration_seconds: 600, updated_at: "2026-07-15T00:00:00.000Z"
+  }];
+  assert.deepEqual(await getLearningProgress(userId, "course-a", readSql), {
+    lessonId: "lesson-2", positionSeconds: 125, durationSeconds: 600, updatedAt: "2026-07-15T00:00:00.000Z"
+  });
 });
 
 test("catalog reloads only complete JSON and public output uses an allowlist", () => {

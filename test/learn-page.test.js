@@ -10,5 +10,8 @@ test("learning page renders a safe course lesson picker", () => {
   assert.match(page, /getJson\("\/api\/catalog"\)/);
   assert.match(page, /new URLSearchParams\(\{ course: courseId, lesson: lesson\.id \}\)/);
   assert.match(page, /setAttribute\("aria-current", "page"\)/);
+  assert.match(page, /fetch\("\/api\/learning-progress"/);
+  assert.match(page, /video\.addEventListener\("timeupdate"/);
+  assert.match(page, /video\.currentTime = progress\.positionSeconds/);
   assert.doesNotMatch(page, /lesson-list\.innerHTML/);
 });

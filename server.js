@@ -13,6 +13,7 @@ const handlers = {
   "/api/google-auth": "./netlify/functions/google-auth",
   "/api/catalog": "./netlify/functions/catalog",
   "/api/learning-access": "./netlify/functions/learning-access",
+  "/api/learning-progress": "./netlify/functions/learning-progress",
   "/api/admin-orders": "./netlify/functions/admin-orders",
   "/api/order-lookup": "./netlify/functions/order-lookup",
   "/api/traffic": "./netlify/functions/traffic",

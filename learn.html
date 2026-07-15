@@ -215,6 +215,18 @@
       font-size: .63rem;
       white-space: nowrap;
     }
+    .progress-note {
+      display: block;
+      padding: 11px 17px;
+      border-bottom: 1px solid var(--line);
+      color: var(--success);
+      background: rgba(116,217,159,.055);
+      font-size: .7rem;
+      line-height: 1.45;
+      text-decoration: none;
+    }
+    .progress-note[hidden] { display: none; }
+    .progress-note:hover { background: rgba(116,217,159,.09); }
     .lesson-list {
       min-height: 0;
       display: block;
@@ -242,6 +254,7 @@
     .lesson-link.active { color: var(--ink); border-color: var(--line-strong); background: var(--panel); }
     .lesson-number { color: var(--quiet); font-family: var(--font-mono); font-size: .62rem; text-align: center; }
     .lesson-link.active .lesson-number { color: var(--success); }
+    .lesson-link.progress:not(.active) .lesson-number { color: var(--success); }
     .lesson-title { overflow: hidden; font-size: .74rem; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; }
     .lesson-duration { color: var(--quiet); font-family: var(--font-mono); font-size: .58rem; }
     .video-wrap {
@@ -409,6 +422,7 @@
       </div>
       <aside class="lessons-panel" aria-labelledby="lessons-title">
         <div class="lessons-head"><h2 id="lessons-title">Nội dung khóa học</h2><span id="lesson-count">Đang tải…</span></div>
+        <a class="progress-note" id="progress-note" hidden></a>
         <nav class="lesson-list" id="lesson-list" aria-label="Danh sách bài học"><p class="lesson-list-state">Đang tải danh sách bài học…</p></nav>
       </aside>
     </div>
@@ -423,6 +437,11 @@
     returnParams.delete("auth_error");
     const currentRelativeUrl = location.pathname + (returnParams.size ? "?" + returnParams : "");
     let hls;
+    let savedProgress;
+    let courseLessons = [];
+    let playbackAuthorized = false;
+    let lastProgressSave = 0;
+    let resumeHandler;
 
     const states = ["loading", "login", "error"];
     function showState(id) {
@@ -471,9 +490,12 @@
         const course = catalog.body.courses?.find(item => item.id === courseId);
         const lessons = course?.lessons || [];
         if (!catalog.response.ok || !lessons.length) throw new Error();
+        courseLessons = lessons;
         list.replaceChildren(...lessons.map((lesson, index) => {
           const link = document.createElement("a");
-          link.className = "lesson-link" + (lesson.id === lessonId ? " active" : "");
+          link.className = "lesson-link" + (lesson.id === lessonId ? " active" : "")
+            + (lesson.id === savedProgress?.lessonId ? " progress" : "");
+          link.dataset.lessonId = lesson.id;
           link.href = "/learn?" + new URLSearchParams({ course: courseId, lesson: lesson.id });
           if (lesson.id === lessonId) link.setAttribute("aria-current", "page");
 
@@ -490,6 +512,7 @@
           return link;
         }));
         count.textContent = `${lessons.length} bài`;
+        renderSavedProgress();
         const active = list.querySelector(".active");
         if (active) list.scrollTop = Math.max(0, active.offsetTop - list.clientHeight / 2);
       } catch {
@@ -499,6 +522,75 @@
           textContent: "Chưa tải được danh sách bài học."
         }));
       }
+    }
+
+    function formatTime(seconds) {
+      const value = Math.max(0, Math.floor(Number(seconds) || 0));
+      const hours = Math.floor(value / 3600);
+      const minutes = Math.floor(value % 3600 / 60);
+      const rest = value % 60;
+      return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+        : `${minutes}:${String(rest).padStart(2, "0")}`;
+    }
+
+    function renderSavedProgress() {
+      const note = document.querySelector("#progress-note");
+      document.querySelectorAll("#lesson-list .progress").forEach(link => link.classList.remove("progress"));
+      const lesson = courseLessons.find(item => item.id === savedProgress?.lessonId);
+      if (!lesson) {
+        note.hidden = true;
+        return;
+      }
+      const link = document.querySelector(`#lesson-list [data-lesson-id="${lesson.id}"]`);
+      link?.classList.add("progress");
+      note.href = "/learn?" + new URLSearchParams({ course: courseId, lesson: lesson.id });
+      note.textContent = `Tiếp tục · ${lesson.title} · ${formatTime(savedProgress.positionSeconds)}`;
+      note.hidden = false;
+    }
+
+    async function loadProgress() {
+      const result = await getJson("/api/learning-progress?" + new URLSearchParams({ course: courseId }));
+      if (result.response.ok) savedProgress = result.body.progress || null;
+      renderSavedProgress();
+      return savedProgress;
+    }
+
+    function prepareResume(progress) {
+      const video = document.querySelector("#video");
+      if (resumeHandler) video.removeEventListener("loadedmetadata", resumeHandler);
+      if (progress?.lessonId !== lessonId || progress.positionSeconds < 5) return;
+      resumeHandler = () => {
+        if (!Number.isFinite(video.duration) || progress.positionSeconds >= video.duration - 5) return;
+        video.currentTime = progress.positionSeconds;
+      };
+      video.addEventListener("loadedmetadata", resumeHandler, { once: true });
+    }
+
+    async function saveProgress(force = false) {
+      const video = document.querySelector("#video");
+      const now = Date.now();
+      if (!playbackAuthorized || !Number.isFinite(video.currentTime) || !Number.isFinite(video.duration)
+          || video.duration <= 0 || (!force && now - lastProgressSave < 15_000)) return;
+      lastProgressSave = now;
+      const payload = {
+        course: courseId,
+        lesson: lessonId,
+        positionSeconds: video.currentTime,
+        durationSeconds: video.duration
+      };
+      try {
+        const response = await fetch("/api/learning-progress", {
+          method: "POST",
+          credentials: "same-origin",
+          keepalive: true,
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+          savedProgress = { lessonId, positionSeconds: Math.floor(video.currentTime), durationSeconds: Math.floor(video.duration) };
+          renderSavedProgress();
+        }
+      } catch (_) {}
     }
 
     function loadHlsJs() {
@@ -548,7 +640,7 @@
 
     async function start() {
       showState("loading");
-      if (!courseId || !lessonId) {
+      if (!courseId) {
         showError("Thiếu thông tin bài học", "Hãy mở lại bài học từ liên kết Nixart đã gửi cho bạn.");
         return;
       }
@@ -564,6 +656,16 @@
         const user = auth.body.user || {};
         document.querySelector("#user-name").textContent = user.displayName || user.name || user.username || user.email || "Thành viên Nixart";
         document.querySelector("#account").classList.add("visible");
+
+        if (!lessonId) {
+          await lessonsReady;
+          const progress = await loadProgress();
+          const targetLesson = courseLessons.some(item => item.id === progress?.lessonId)
+            ? progress.lessonId : courseLessons[0]?.id;
+          if (!targetLesson) throw new Error("Khóa học chưa có bài phát hành");
+          location.replace("/learn?" + new URLSearchParams({ course: courseId, lesson: targetLesson }));
+          return;
+        }
 
         const query = new URLSearchParams({ course: courseId, lesson: lessonId });
         const access = await getJson("/api/learning-access?" + query);
@@ -583,6 +685,8 @@
         document.querySelector("#lesson-name").textContent = lessonName;
         document.querySelector("#meta-title").textContent = `${courseName} · ${lessonName}`;
         document.title = `${lessonName} — Nixart`;
+        playbackAuthorized = true;
+        prepareResume(await loadProgress());
         await play(access.body.manifestUrl);
       } catch (error) {
         showError("Chưa thể mở bài học", error.message || "Hệ thống đang bận. Hãy thử lại sau.");
@@ -590,6 +694,13 @@
     }
 
     document.querySelector("#retry").addEventListener("click", start);
+    const video = document.querySelector("#video");
+    video.addEventListener("timeupdate", () => saveProgress());
+    video.addEventListener("pause", () => saveProgress(true));
+    video.addEventListener("ended", () => saveProgress(true));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveProgress(true);
+    });
     document.querySelector("#logout").addEventListener("click", async () => {
       const button = document.querySelector("#logout");
       button.disabled = true;
@@ -604,8 +715,11 @@
         location.href = "/";
       }
     });
-    window.addEventListener("pagehide", () => hls?.destroy());
-    loadLessons();
+    window.addEventListener("pagehide", () => {
+      saveProgress(true);
+      hls?.destroy();
+    });
+    const lessonsReady = loadLessons();
     start();
   </script>
 </body>

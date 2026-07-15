@@ -333,6 +333,17 @@ async function ensureLearningTables() {
       )
     `;
     await sql`
+      CREATE TABLE IF NOT EXISTS learning_progress (
+        user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        course_id VARCHAR(100) NOT NULL,
+        lesson_id VARCHAR(100) NOT NULL,
+        position_seconds INT NOT NULL DEFAULT 0 CHECK (position_seconds BETWEEN 0 AND 86400),
+        duration_seconds INT NOT NULL DEFAULT 0 CHECK (duration_seconds BETWEEN 0 AND 86400),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, course_id)
+      )
+    `;
+    await sql`
       INSERT INTO learning_entitlements (discord_id, access_scope, course_id, expires_at, last_order_id)
       SELECT DISTINCT ON (discord_id, access_scope, CASE WHEN access_scope = 'course' THEN course_id ELSE '' END)
         discord_id,
@@ -413,6 +424,60 @@ async function getEntitlements(discordId) {
 
 function validUserId(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function normalizeLearningProgress(positionSeconds, durationSeconds) {
+  if (typeof positionSeconds !== "number" || typeof durationSeconds !== "number") {
+    throw new Error("Tiến độ bài học không hợp lệ");
+  }
+  const position = Number(positionSeconds);
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration < 0
+      || position > 86_400 || duration > 86_400) throw new Error("Tiến độ bài học không hợp lệ");
+  const safeDuration = Math.floor(duration);
+  return {
+    positionSeconds: Math.floor(safeDuration ? Math.min(position, safeDuration) : position),
+    durationSeconds: safeDuration
+  };
+}
+
+async function getLearningProgress(userId, courseId, sqlOverride) {
+  const safeCourseId = cleanId(courseId);
+  if (!validUserId(userId) || !safeCourseId) return null;
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  const rows = await sql`
+    SELECT lesson_id, position_seconds, duration_seconds, updated_at
+    FROM learning_progress
+    WHERE user_id = ${String(userId)} AND course_id = ${safeCourseId}
+    LIMIT 1
+  `;
+  const progress = rows[0];
+  return progress ? {
+    lessonId: String(progress.lesson_id || ""),
+    positionSeconds: Number(progress.position_seconds) || 0,
+    durationSeconds: Number(progress.duration_seconds) || 0,
+    updatedAt: progress.updated_at || null
+  } : null;
+}
+
+async function saveLearningProgress({ userId, courseId, lessonId, positionSeconds, durationSeconds }, sqlOverride) {
+  const safeCourseId = cleanId(courseId);
+  const safeLessonId = cleanId(lessonId);
+  if (!validUserId(userId) || !safeCourseId || !safeLessonId) throw new Error("Tiến độ bài học không hợp lệ");
+  const progress = normalizeLearningProgress(positionSeconds, durationSeconds);
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  await sql`
+    INSERT INTO learning_progress (user_id, course_id, lesson_id, position_seconds, duration_seconds)
+    VALUES (${String(userId)}::uuid, ${safeCourseId}, ${safeLessonId}, ${progress.positionSeconds}, ${progress.durationSeconds})
+    ON CONFLICT (user_id, course_id) DO UPDATE
+    SET lesson_id = EXCLUDED.lesson_id,
+        position_seconds = EXCLUDED.position_seconds,
+        duration_seconds = EXCLUDED.duration_seconds,
+        updated_at = NOW()
+  `;
+  return { lessonId: safeLessonId, ...progress };
 }
 
 async function claimUserEntitlements(user, sqlOverride) {
@@ -871,6 +936,7 @@ module.exports = {
   findSaleCourse,
   getCatalog,
   getEntitlements,
+  getLearningProgress,
   getUserEntitlements,
   googleEmail,
   grantEmailAccess,
@@ -881,5 +947,7 @@ module.exports = {
   isCourseListed,
   isCourseSaleReady,
   isForumCourseSaleReady,
-  publicCatalog
+  normalizeLearningProgress,
+  publicCatalog,
+  saveLearningProgress
 };

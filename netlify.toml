@@ -50,6 +50,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/learning-progress"
+  to = "/.netlify/functions/learning-progress"
+  status = 200
+
+[[redirects]]
   from = "/api/traffic"
   to = "/.netlify/functions/traffic"
   status = 200
