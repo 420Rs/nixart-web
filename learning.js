@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { neon } = require("@neondatabase/serverless");
+const { ensureAuthTables } = require("./netlify/functions/lib/auth");
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const DELIVERY_MODES = Object.freeze(["DRIVE", "STREAM", "NON-STREAM"]);
@@ -226,6 +227,7 @@ async function ensureLearningTables() {
   if (tablesReady) return tablesReady;
   const sql = db();
   tablesReady = (async () => {
+    await ensureAuthTables();
     await sql`
       CREATE TABLE IF NOT EXISTS purchase_orders (
         id UUID PRIMARY KEY,
@@ -260,6 +262,8 @@ async function ensureLearningTables() {
     await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
     await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS order_origin VARCHAR(20) NOT NULL DEFAULT 'web'`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_discord_access_idx ON purchase_orders (discord_id, status, access_scope, access_expires_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS purchase_orders_user_access_idx ON purchase_orders (auth_user_id, status, access_scope, access_expires_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS purchase_orders_verified_email_idx ON purchase_orders (LOWER(email)) WHERE delivery_type = 'hls' AND status = 'approved'`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders (status, created_at DESC)`;
     await sql`
       UPDATE purchase_orders
@@ -318,6 +322,17 @@ async function ensureLearningTables() {
       )
     `;
     await sql`
+      CREATE TABLE IF NOT EXISTS learning_user_entitlements (
+        user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        access_scope VARCHAR(20) NOT NULL,
+        course_id VARCHAR(100) NOT NULL DEFAULT '',
+        expires_at TIMESTAMPTZ,
+        last_order_id UUID UNIQUE NOT NULL REFERENCES purchase_orders(id),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, access_scope, course_id)
+      )
+    `;
+    await sql`
       INSERT INTO learning_entitlements (discord_id, access_scope, course_id, expires_at, last_order_id)
       SELECT DISTINCT ON (discord_id, access_scope, CASE WHEN access_scope = 'course' THEN course_id ELSE '' END)
         discord_id,
@@ -339,6 +354,24 @@ async function ensureLearningTables() {
       WHERE delivery_type = 'hls' AND status = 'approved' AND discord_id IS NOT NULL
         AND access_scope IN ('course', 'basic', 'full')
       ON CONFLICT (order_id) DO NOTHING
+    `;
+    await sql`
+      INSERT INTO learning_user_entitlements (user_id, access_scope, course_id, expires_at, last_order_id)
+      SELECT DISTINCT ON (user_row.id, purchase.access_scope, CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END)
+        user_row.id,
+        purchase.access_scope,
+        CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END,
+        purchase.access_expires_at,
+        purchase.id
+      FROM purchase_orders purchase
+      JOIN app_users user_row ON user_row.id::text = purchase.auth_user_id
+      WHERE purchase.delivery_type = 'hls' AND purchase.status = 'approved'
+        AND purchase.access_scope IN ('course', 'basic', 'full')
+        AND (purchase.access_scope = 'course' OR purchase.access_expires_at IS NOT NULL)
+      ORDER BY user_row.id, purchase.access_scope,
+               CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END,
+               purchase.access_expires_at DESC NULLS LAST, purchase.created_at DESC
+      ON CONFLICT DO NOTHING
     `;
   })().catch(error => {
     tablesReady = null;
@@ -378,8 +411,169 @@ async function getEntitlements(discordId) {
   `;
 }
 
-async function hasCourseAccess(discordId, course) {
-  return canAccessCourse(await getEntitlements(discordId), course);
+function validUserId(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+async function claimUserEntitlements(user, sqlOverride) {
+  const userId = String(user?.id || "");
+  if (!validUserId(userId)) return;
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  const email = user?.emailVerified === true && user?.emailAuthoritative === true ? googleEmail(user?.email) : "";
+
+  if (email) {
+    await sql`
+      UPDATE purchase_orders
+      SET auth_user_id = ${userId}
+      WHERE auth_user_id IS NULL AND delivery_type = 'hls' AND status = 'approved'
+        AND LOWER(email) = ${email} AND LOWER(email) NOT LIKE '%@discord.invalid'
+    `;
+  }
+
+  await sql`
+    INSERT INTO learning_user_entitlements (user_id, access_scope, course_id, expires_at, last_order_id)
+    SELECT DISTINCT ON (purchase.access_scope, CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END)
+      ${userId}::uuid,
+      purchase.access_scope,
+      CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END,
+      purchase.access_expires_at,
+      purchase.id
+    FROM purchase_orders purchase
+    WHERE purchase.auth_user_id = ${userId} AND purchase.delivery_type = 'hls' AND purchase.status = 'approved'
+      AND purchase.access_scope IN ('course', 'basic', 'full')
+      AND (purchase.access_scope = 'course' OR purchase.access_expires_at IS NOT NULL)
+    ORDER BY purchase.access_scope,
+             CASE WHEN purchase.access_scope = 'course' THEN purchase.course_id ELSE '' END,
+             purchase.access_expires_at DESC NULLS LAST, purchase.created_at DESC
+    ON CONFLICT (user_id, access_scope, course_id) DO UPDATE
+    SET expires_at = CASE
+          WHEN EXCLUDED.access_scope = 'course' THEN NULL
+          ELSE GREATEST(learning_user_entitlements.expires_at, EXCLUDED.expires_at)
+        END,
+        last_order_id = CASE
+          WHEN EXCLUDED.access_scope = 'course'
+            OR learning_user_entitlements.expires_at IS NULL
+            OR EXCLUDED.expires_at >= learning_user_entitlements.expires_at
+          THEN EXCLUDED.last_order_id
+          ELSE learning_user_entitlements.last_order_id
+        END,
+        updated_at = NOW()
+  `;
+}
+
+async function getUserEntitlements(user) {
+  if (typeof user === "string") return getEntitlements(user);
+  const userId = String(user?.id || "");
+  if (!validUserId(userId)) return [];
+  await ensureLearningTables();
+  const sql = db();
+  const direct = await sql`
+    SELECT CASE WHEN access_scope = 'course' THEN course_id ELSE '' END AS course_id,
+           access_scope, access_expires_at
+    FROM purchase_orders
+    WHERE auth_user_id = ${userId} AND delivery_type = 'hls' AND status = 'approved'
+      AND access_scope IN ('course', 'basic', 'full')
+      AND (access_scope = 'course' OR access_expires_at IS NOT NULL)
+    ORDER BY created_at DESC
+  `;
+  const legacy = user?.discordId ? await getEntitlements(user.discordId) : [];
+  return [...direct, ...legacy];
+}
+
+async function hasCourseAccess(user, course) {
+  return canAccessCourse(await getUserEntitlements(user), course);
+}
+
+async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOverride) {
+  const normalizedEmail = googleEmail(email);
+  if (!normalizedEmail) throw new Error("Email Google không hợp lệ");
+  const product = grantProductFor(cleanId(scope), cleanId(value));
+  if (!product || product.deliveryType !== "hls") throw new Error("Chỉ có thể cấp quyền email cho khóa STREAM hoặc gói tháng");
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+
+  const accounts = await sql`
+    SELECT id, (email_authoritative_at IS NOT NULL) AS authoritative
+    FROM app_users
+    WHERE LOWER(email) = ${normalizedEmail} AND google_sub IS NOT NULL
+      AND email_verified_at IS NOT NULL AND disabled_at IS NULL
+    LIMIT 1
+  `;
+  if (accounts[0] && accounts[0].authoritative !== true) {
+    throw new Error("Email Google ngoài Gmail/Workspace cần được xác minh riêng trước khi cấp quyền");
+  }
+  const userId = String(accounts[0]?.id || "");
+  if (!userId && !normalizedEmail.endsWith("@gmail.com")) {
+    throw new Error("Email Workspace cần đăng nhập Google một lần trước khi cấp quyền");
+  }
+
+  if (product.scope === "course") {
+    const existing = await sql`
+      SELECT purchase_code, auth_user_id, access_expires_at
+      FROM purchase_orders
+      WHERE delivery_type = 'hls' AND status = 'approved' AND access_scope = 'course'
+        AND course_id = ${product.id}
+        AND (
+          (${Boolean(userId)} AND (auth_user_id = ${userId || null}
+            OR (auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})))
+          OR (${!userId} AND auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})
+        )
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    if (existing[0]) {
+      return {
+        purchaseCode: existing[0].purchase_code,
+        product: product.title,
+        email: normalizedEmail,
+        userId: existing[0].auth_user_id || userId,
+        expiresAt: null,
+        reused: true
+      };
+    }
+  }
+
+  const orderId = crypto.randomUUID();
+  const purchaseCode = `NIX${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
+  const tokenHash = crypto.createHash("sha256").update(crypto.randomBytes(32)).digest("hex");
+  const safeDays = product.scope === "course" ? null : Math.max(1, Math.min(366, Number(product.days || 30)));
+  const rows = await sql`
+    INSERT INTO purchase_orders (
+      id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
+      email, payer_name, transfer_reference, amount, status, delivery_type,
+      auth_user_id, discord_id, access_scope, access_days, access_expires_at,
+      paid_at, reviewed_at, order_origin
+    ) VALUES (
+      ${orderId}, ${purchaseCode}, ${tokenHash}, ${product.id}, ${product.title}, '',
+      ${normalizedEmail}, ${String(displayName || normalizedEmail).slice(0, 200)}, 'ADMIN_EMAIL_GRANT',
+      ${product.amount}, 'approved', 'hls', ${userId || null}, NULL, ${product.scope}, ${safeDays},
+      CASE WHEN ${product.scope} = 'course' THEN NULL ELSE
+        GREATEST(
+          NOW(),
+          COALESCE((
+            SELECT MAX(access_expires_at) FROM purchase_orders
+            WHERE delivery_type = 'hls' AND status = 'approved'
+              AND access_scope = ${product.scope}
+              AND (
+                (${Boolean(userId)} AND auth_user_id = ${userId || null})
+                OR (${!userId} AND auth_user_id IS NULL AND LOWER(email) = ${normalizedEmail})
+              )
+          ), NOW())
+        ) + (${safeDays || 0} * INTERVAL '1 day')
+      END,
+      NOW(), NOW(), 'admin-email'
+    )
+    RETURNING access_expires_at
+  `;
+  if (userId) await claimUserEntitlements({ id: userId }, sqlOverride);
+  return {
+    purchaseCode,
+    product: product.title,
+    email: normalizedEmail,
+    userId,
+    expiresAt: rows[0]?.access_expires_at || null,
+    reused: false
+  };
 }
 
 function productFor(scope, value) {
@@ -400,6 +594,32 @@ function productFor(scope, value) {
   const plan = findPlan(scope);
   if (!plan || !["basic", "full"].includes(scope) || !Number(plan.price)) return null;
   return { id: `plan:${scope}`, title: plan.title, amount: Number(plan.price), scope, days: Number(plan.durationDays || 30), deliveryType: "hls", driveFolderId: "" };
+}
+
+function grantProductFor(scope, value) {
+  if (scope === "course") {
+    const course = findCourse(value);
+    if (!course || effectiveDeliveryMode(course) !== "STREAM") return null;
+    return {
+      id: course.id,
+      title: course.title,
+      amount: Number(course.price || 0),
+      scope: "course",
+      days: null,
+      deliveryType: "hls"
+    };
+  }
+  if (!["basic", "full"].includes(scope)) return null;
+  const plan = getCatalog().plans.find(item => item.id === scope);
+  if (!plan) return null;
+  return {
+    id: `plan:${scope}`,
+    title: plan.title,
+    amount: Number(plan.price || 0),
+    scope,
+    days: Number(plan.durationDays || 30),
+    deliveryType: "hls"
+  };
 }
 
 function googleEmail(value) {
@@ -662,6 +882,7 @@ module.exports = {
   ID_RE,
   approveHlsOrder,
   canAccessCourse,
+  claimUserEntitlements,
   cleanId,
   courseDeliveryMode,
   createPurchase,
@@ -675,7 +896,9 @@ module.exports = {
   findSaleCourse,
   getCatalog,
   getEntitlements,
+  getUserEntitlements,
   googleEmail,
+  grantEmailAccess,
   hasPublishedLesson,
   hasCourseAccess,
   isCourseContentReady,

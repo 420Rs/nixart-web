@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
+    "grant:google": "node --env-file-if-exists=.env scripts/grant-google-access.js",
     "sync:discord-courses": "node --env-file-if-exists=.env scripts/sync-discord-courses.js",
     "test": "node --test"
   },

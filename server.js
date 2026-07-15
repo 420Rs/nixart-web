@@ -10,6 +10,7 @@ const handlers = {
   "/api/state": "./netlify/functions/state",
   "/api/auth": "./netlify/functions/auth",
   "/api/discord-auth": "./netlify/functions/discord-auth",
+  "/api/google-auth": "./netlify/functions/google-auth",
   "/api/catalog": "./netlify/functions/catalog",
   "/api/learning-access": "./netlify/functions/learning-access",
   "/api/admin-orders": "./netlify/functions/admin-orders",

@@ -240,6 +240,8 @@
     .button:hover { transform: translateY(-1px); background: #fff; border-color: #fff; }
     .button.secondary { margin-left: 8px; border-color: var(--line); color: var(--muted); background: transparent; }
     .button.secondary:hover { color: var(--ink); border-color: var(--line-strong); background: var(--panel); }
+    .login-actions { width: min(100%, 270px); display: grid; gap: 8px; margin-inline: auto; }
+    .login-actions .button.secondary { margin: 0; }
     .video-meta {
       min-height: 62px;
       display: flex;
@@ -325,8 +327,8 @@
     <div class="theater">
       <div class="video-wrap">
         <div class="state" id="loading" role="status"><div class="spinner" aria-hidden="true"></div><h2>Đang kiểm tra quyền học</h2><p>Chỉ mất một chút thời gian.</p></div>
-        <div class="state" id="login" hidden><div class="state-icon">#</div><h2>Đăng nhập bằng Discord</h2><p>Dùng tài khoản Discord đã mua khóa hoặc kích hoạt gói tháng để tiếp tục.</p><a class="button" id="login-link" href="/api/discord-auth">Tiếp tục với Discord</a></div>
-        <div class="state" id="error" hidden><div class="state-icon">!</div><h2 id="error-title">Không thể mở bài học</h2><p id="error-message">Hãy thử lại hoặc kiểm tra quyền học trong Discord.</p><button class="button" id="retry" type="button">Thử lại</button><a class="button secondary" href="/">Về trang chủ</a></div>
+        <div class="state" id="login" hidden><div class="state-icon">NX</div><h2>Đăng nhập để tiếp tục</h2><p id="login-message">Chọn tài khoản gắn với quyền truy cập khóa học của bạn.</p><div class="login-actions"><a class="button" id="google-login-link" href="/api/google-auth">Tiếp tục với Google</a><a class="button secondary" id="discord-login-link" href="/api/discord-auth">Tiếp tục với Discord</a></div></div>
+        <div class="state" id="error" hidden><div class="state-icon">!</div><h2 id="error-title">Không thể mở bài học</h2><p id="error-message">Hãy thử lại hoặc kiểm tra quyền học của tài khoản.</p><button class="button" id="retry" type="button">Thử lại</button><a class="button secondary" href="/">Về trang chủ</a></div>
         <video id="video" controls playsinline preload="metadata" crossorigin="use-credentials" controlslist="nodownload" disablepictureinpicture aria-label="Trình phát bài học"></video>
       </div>
       <div class="video-meta"><p><strong id="meta-title">Nixart</strong> · Phát trực tuyến HLS</p><a class="help" href="/" target="_blank">Cần trợ giúp?</a></div>
@@ -338,7 +340,9 @@
     const params = new URLSearchParams(location.search);
     const courseId = params.get("course")?.trim();
     const lessonId = params.get("lesson")?.trim();
-    const currentRelativeUrl = location.pathname + location.search;
+    const returnParams = new URLSearchParams(params);
+    returnParams.delete("auth_error");
+    const currentRelativeUrl = location.pathname + (returnParams.size ? "?" + returnParams : "");
     let hls;
 
     const states = ["loading", "login", "error"];
@@ -359,7 +363,17 @@
     }
 
     function showLogin() {
-      document.querySelector("#login-link").href = "/api/discord-auth?returnTo=" + encodeURIComponent(currentRelativeUrl);
+      const authMessages = {
+        state: "Phiên đăng nhập đã hết hạn. Hãy thử lại.",
+        denied: "Bạn đã hủy đăng nhập. Chọn một phương thức để thử lại.",
+        account: "Email này đang thuộc một tài khoản Nixart khác. Hãy đăng nhập bằng phương thức cũ hoặc liên hệ Nixart.",
+        google: "Google chưa thể xác nhận tài khoản lúc này. Hãy thử lại sau."
+      };
+      document.querySelector("#login-message").textContent = authMessages[params.get("auth_error")]
+        || "Chọn tài khoản gắn với quyền truy cập khóa học của bạn.";
+      const returnTo = "?returnTo=" + encodeURIComponent(currentRelativeUrl);
+      document.querySelector("#google-login-link").href = "/api/google-auth" + returnTo;
+      document.querySelector("#discord-login-link").href = "/api/discord-auth" + returnTo;
       showState("login");
     }
 
@@ -418,7 +432,7 @@
     async function start() {
       showState("loading");
       if (!courseId || !lessonId) {
-        showError("Thiếu thông tin bài học", "Hãy mở lại bài học từ liên kết bot đã gửi trong Discord.");
+        showError("Thiếu thông tin bài học", "Hãy mở lại bài học từ liên kết Nixart đã gửi cho bạn.");
         return;
       }
 
@@ -431,7 +445,7 @@
         if (!auth.response.ok) throw new Error("Không thể kiểm tra phiên đăng nhập");
 
         const user = auth.body.user || {};
-        document.querySelector("#user-name").textContent = user.displayName || user.username || user.name || "Thành viên Nixart";
+        document.querySelector("#user-name").textContent = user.displayName || user.name || user.username || user.email || "Thành viên Nixart";
         document.querySelector("#account").classList.add("visible");
 
         const query = new URLSearchParams({ course: courseId, lesson: lessonId });
@@ -441,7 +455,7 @@
           return;
         }
         if (access.response.status === 403) {
-          showError("Bạn chưa có quyền xem bài này", "Hãy kiểm tra khóa đã mua hoặc thời hạn gói trong Discord.");
+          showError("Bạn chưa có quyền xem bài này", "Hãy đăng nhập đúng tài khoản đã mua khóa hoặc còn thời hạn gói.");
           return;
         }
         if (!access.response.ok || !access.body.manifestUrl) throw new Error("Bài học hiện chưa sẵn sàng");

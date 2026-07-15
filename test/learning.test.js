@@ -7,7 +7,7 @@ const path = require("node:path");
 process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
 const {
-  canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail,
+  canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess,
   hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
   isForumCourseSaleReady, publicCatalog
 } = require("../learning");
@@ -19,6 +19,11 @@ test("media token is scoped to one lesson and expires", () => {
   assert.equal(verifyMediaToken(token, "course-a", "lesson-2"), null);
   assert.equal(verifyMediaToken(`${token}x`, "course-a", "lesson-1"), null);
   assert.equal(verifyMediaToken(token, "course-a", "lesson-1", Math.floor(Date.now() / 1000) + 3601), null);
+
+  const userId = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  const accountToken = issueMediaToken({ userId, courseId: "course-a", lessonId: "lesson-1" });
+  assert.equal(verifyMediaToken(accountToken, "course-a", "lesson-1").sub, userId);
+  assert.throws(() => issueMediaToken({ userId: "user@example.com", courseId: "course-a", lessonId: "lesson-1" }), /Invalid media token scope/);
 });
 
 test("individual, basic and full access follow catalog tier", () => {
@@ -228,6 +233,112 @@ test("Discord OAuth return path cannot leave the learning page", () => {
   assert.equal(safeReturnTo("/\\evil.example/path"), "/learn");
   assert.equal(safeReturnTo("//evil.example/path"), "/learn");
   assert.equal(safeReturnTo("/admin"), "/learn");
+});
+
+test("Google OAuth requests identity only and verifies signed claims strictly", async () => {
+  const previous = {
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI
+  };
+  process.env.GOOGLE_OAUTH_CLIENT_ID = "test-client.apps.googleusercontent.com";
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET = "test-secret";
+  process.env.GOOGLE_OAUTH_REDIRECT_URI = "http://localhost/api/google-auth";
+  const googleAuth = require("../netlify/functions/google-auth");
+
+  try {
+    assert.deepEqual(googleAuth.GOOGLE_SCOPES, ["openid", "email", "profile"]);
+    assert.equal(googleAuth.safeReturnTo("/learn?course=a&lesson=b"), "/learn?course=a&lesson=b");
+    assert.equal(googleAuth.safeReturnTo("//evil.example/path"), "/learn");
+    const response = await googleAuth.handler({
+      httpMethod: "GET",
+      headers: { host: "localhost" },
+      queryStringParameters: { returnTo: "/learn?course=a&lesson=b" }
+    });
+    assert.equal(response.statusCode, 302);
+    const authorize = new URL(response.headers.Location);
+    assert.equal(authorize.hostname, "accounts.google.com");
+    assert.deepEqual(authorize.searchParams.get("scope").split(" ").sort(), ["email", "openid", "profile"]);
+    assert.equal(authorize.searchParams.has("access_type"), false);
+    const state = googleAuth.decodeState(authorize.searchParams.get("state"));
+    assert.ok(state?.n);
+    assert.equal(authorize.searchParams.get("nonce"), state.n);
+
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+      iss: "https://accounts.google.com",
+      aud: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      exp: now + 300,
+      nonce: state.n,
+      sub: "google-user-123",
+      email: " User@Example.com ",
+      email_verified: true,
+      name: "Nixart User"
+    };
+    const external = googleAuth.validateGoogleClaims(claims, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now);
+    assert.equal(external.email, "user@example.com");
+    assert.equal(external.emailAuthoritative, false);
+    assert.equal(googleAuth.validateGoogleClaims({ ...claims, email: "user@gmail.com" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now).emailAuthoritative, true);
+    assert.equal(googleAuth.validateGoogleClaims({ ...claims, email: "user@studio.test", hd: "studio.test" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now).emailAuthoritative, true);
+    assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, email_verified: "true" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /not verified/);
+    assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, aud: "other-client" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /audience/);
+    assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, nonce: "wrong" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /nonce/);
+  } finally {
+    if (previous.clientId === undefined) delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+    else process.env.GOOGLE_OAUTH_CLIENT_ID = previous.clientId;
+    if (previous.clientSecret === undefined) delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    else process.env.GOOGLE_OAUTH_CLIENT_SECRET = previous.clientSecret;
+    if (previous.redirectUri === undefined) delete process.env.GOOGLE_OAUTH_REDIRECT_URI;
+    else process.env.GOOGLE_OAUTH_REDIRECT_URI = previous.redirectUri;
+  }
+});
+
+test("Google access grant CLI requires one product selector", () => {
+  const { argumentsFrom } = require("../scripts/grant-google-access");
+  assert.deepEqual(argumentsFrom(["--email", "user@gmail.com", "--course", "course-a"]), {
+    email: "user@gmail.com",
+    course: "course-a"
+  });
+  assert.throws(() => argumentsFrom(["--email", "user@gmail.com"]), /đúng một/);
+  assert.throws(() => argumentsFrom(["--email", "user@gmail.com", "--course", "a", "--plan", "full"]), /đúng một/);
+});
+
+test("Google access grant creates a pending UUID-bound order and rejects weak existing identities", async () => {
+  const queries = [];
+  const pendingSql = async (strings, ...values) => {
+    const source = strings.join(" ? ");
+    queries.push({ source, values });
+    if (source.includes("FROM app_users")) return [];
+    if (source.includes("INSERT INTO purchase_orders")) return [{ access_expires_at: "2030-01-01T00:00:00.000Z" }];
+    throw new Error(`Unexpected SQL: ${source.slice(0, 80)}`);
+  };
+  const granted = await grantEmailAccess({ email: " USER@GMAIL.COM ", scope: "full", value: "full" }, pendingSql);
+  assert.equal(granted.email, "user@gmail.com");
+  assert.equal(granted.userId, "");
+  assert.equal(granted.reused, false);
+  assert.equal(queries.some(query => query.source.includes("'admin-email'") && query.values.includes("user@gmail.com")), true);
+
+  const weakIdentitySql = async (strings) => {
+    const source = strings.join(" ? ");
+    if (source.includes("FROM app_users")) {
+      return [{ id: "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9", authoritative: false }];
+    }
+    throw new Error("The grant must stop before writing an order");
+  };
+  await assert.rejects(
+    grantEmailAccess({ email: "user@external.example", scope: "full", value: "full" }, weakIdentitySql),
+    /Gmail\/Workspace/
+  );
+
+  const unknownWorkspaceSql = async (strings) => {
+    const source = strings.join(" ? ");
+    if (source.includes("FROM app_users")) return [];
+    throw new Error("An unknown Workspace address must not create an order yet");
+  };
+  await assert.rejects(
+    grantEmailAccess({ email: "user@studio.example", scope: "full", value: "full" }, unknownWorkspaceSql),
+    /đăng nhập Google một lần/
+  );
 });
 
 test("media server requires a scoped cookie and supports byte ranges", async t => {

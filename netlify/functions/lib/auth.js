@@ -55,6 +55,11 @@ async function ensureAuthTables() {
         discord_username VARCHAR(100),
         discord_display_name VARCHAR(100),
         discord_avatar VARCHAR(300),
+        google_sub VARCHAR(255),
+        google_display_name VARCHAR(100),
+        google_avatar VARCHAR(500),
+        email_verified_at TIMESTAMPTZ,
+        email_authoritative_at TIMESTAMPTZ,
         failed_attempts INT NOT NULL DEFAULT 0,
         locked_until TIMESTAMPTZ,
         disabled_at TIMESTAMPTZ,
@@ -68,7 +73,14 @@ async function ensureAuthTables() {
     await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS discord_username VARCHAR(100)`;
     await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS discord_display_name VARCHAR(100)`;
     await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS discord_avatar VARCHAR(300)`;
+    await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS google_sub VARCHAR(255)`;
+    await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS google_display_name VARCHAR(100)`;
+    await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS google_avatar VARCHAR(500)`;
+    await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_authoritative_at TIMESTAMPTZ`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS app_users_discord_idx ON app_users (discord_id) WHERE discord_id IS NOT NULL`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS app_users_google_idx ON app_users (google_sub) WHERE google_sub IS NOT NULL`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS app_users_email_lower_idx ON app_users (LOWER(email)) WHERE email IS NOT NULL`;
     await sql`
       CREATE TABLE IF NOT EXISTS user_sessions (
         token_hash VARCHAR(64) PRIMARY KEY,
@@ -103,8 +115,17 @@ async function getAuthenticatedUser(event) {
       SELECT u.id, u.email,
              u.discord_id AS "discordId",
              u.discord_username AS "username",
-             u.discord_display_name AS "displayName",
-             u.discord_avatar AS "avatarHash"
+             COALESCE(u.google_display_name, u.discord_display_name, u.discord_username, u.email) AS "displayName",
+             u.discord_avatar AS "avatarHash",
+             u.google_avatar AS "avatar",
+             (u.email_verified_at IS NOT NULL) AS "emailVerified",
+             (u.email_authoritative_at IS NOT NULL) AS "emailAuthoritative",
+             CASE
+               WHEN u.google_sub IS NOT NULL AND u.discord_id IS NOT NULL THEN 'linked'
+               WHEN u.google_sub IS NOT NULL THEN 'google'
+               WHEN u.discord_id IS NOT NULL THEN 'discord'
+               ELSE 'local'
+             END AS "provider"
       FROM user_sessions s JOIN app_users u ON u.id = s.user_id
       WHERE s.token_hash = ${tokenHash(token)} AND s.expires_at > NOW() AND u.disabled_at IS NULL
       LIMIT 1

@@ -17,14 +17,14 @@ exports.handler = async (event) => {
   if (!course || !lesson) return json(404, { error: "Không tìm thấy bài học" });
 
   const user = await getAuthenticatedUser(event);
-  if (!user?.discordId) return json(401, { error: "Vui lòng đăng nhập bằng Discord" });
+  if (!user?.id) return json(401, { error: "Vui lòng đăng nhập để tiếp tục" });
 
   try {
-    if (!await hasCourseAccess(user.discordId, course)) {
+    if (!await hasCourseAccess(user, course)) {
       return json(403, { error: "Bạn chưa mua khóa học hoặc gói tháng đã hết hạn" });
     }
     const mediaPath = `/media/${course.id}/${lesson.id}/`;
-    const token = issueMediaToken({ discordId: user.discordId, courseId: course.id, lessonId: lesson.id });
+    const token = issueMediaToken({ userId: user.id, courseId: course.id, lessonId: lesson.id });
     return json(200, {
       course: { id: course.id, title: course.title },
       lesson: { id: lesson.id, title: lesson.title },

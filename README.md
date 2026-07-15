@@ -5,7 +5,7 @@
 ```text
 nixart.io.vn (Render)              learn.nixart.io.vn
 └── landing page                   └── Cloudflare Tunnel ── máy cá nhân
-                                      ├── Discord bot + OAuth2
+                                      ├── Discord bot + Google/Discord OAuth2
                                       ├── /api/sepay + PostgreSQL
                                       └── HLS .m3u8 + .ts
 ```
@@ -16,11 +16,11 @@ Một tiến trình Node chạy trên máy cá nhân:
 
 - landing page thông báo chuyển sang Discord;
 - Discord bot `/mua` và `/hoc`;
-- Discord OAuth2 để nhận diện người học;
+- Google hoặc Discord OAuth2 để nhận diện người học;
 - SePay xác nhận đơn và mở quyền mua lẻ/gói 30 ngày;
 - phát HLS `.m3u8` + `.ts` với cookie HMAC theo từng bài.
 
-Bot chỉ gửi URL bài học. Website kiểm tra lại quyền nên chia sẻ URL không cấp quyền cho tài khoản khác.
+Liên kết bài học không mang theo quyền truy cập. Website kiểm tra lại tài khoản nên chia sẻ URL không cấp quyền cho người khác.
 
 ## 1. Chuẩn bị
 
@@ -29,6 +29,7 @@ Bot chỉ gửi URL bài học. Website kiểm tra lại quyền nên chia sẻ 
 - `cloudflared` 2026.7.1+ (đã cài trên máy triển khai)
 - PostgreSQL/Neon
 - Discord Application có Bot và OAuth2
+- Google Cloud OAuth 2.0 Web Client
 - Domain được thêm vào Cloudflare DNS
 
 ```powershell
@@ -48,6 +49,17 @@ Trong Discord Developer Portal:
 2. Mời bot bằng scopes `bot` và `applications.commands`.
 3. Trong forum khóa học, cấp `View Channel`, `Send Messages`, `Create Public Threads`, `Send Messages in Threads` và `Embed Links`. Cấp thêm `Manage Channels` để lần đồng bộ đầu tự tạo ba tag `DRIVE`/`STREAM`/`NON-STREAM`, cùng `Manage Threads` để đổi tên, mở lại hoặc lưu trữ bài cũ. Nếu ba tag đã được tạo thủ công thì các lần sau không cần `Manage Channels`. Bot không cần Message Content Intent.
 4. Điền `DISCORD_GUILD_ID` để slash command cập nhật ngay trong server thử nghiệm; bỏ trống để đăng ký global.
+
+Trong Google Cloud Console, tạo OAuth 2.0 Client loại **Web application**, thêm Authorized redirect URI `https://learn.nixart.io.vn/api/google-auth`, rồi điền `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` và `GOOGLE_OAUTH_REDIRECT_URI` vào `.env`. Chuyển OAuth audience sang Production trước khi mở cho khách; nếu để Testing, chỉ test users đăng nhập được. Tài khoản Google chỉ được chấp nhận khi email đã được Google xác minh.
+
+Với khách không dùng Discord, sau khi đối soát thanh toán có thể cấp khóa hoặc gói trực tiếp cho email Google:
+
+```powershell
+npm run grant:google -- --email user@gmail.com --course ma-khoa-hoc
+npm run grant:google -- --email user@gmail.com --plan full
+```
+
+Nếu Gmail/Google Workspace chưa từng đăng nhập, quyền sẽ chờ và tự gắn vào UUID tài khoản ở lần đăng nhập Google đầu tiên. Google Account dùng địa chỉ email của nhà cung cấp khác cần xác minh riêng trước khi cấp quyền vì Google không luôn bảo đảm quyền sở hữu hiện tại của hộp thư đó. Lệnh không dùng email làm khóa phát video và không lưu token Google.
 
 ## 2. Quản lý và đăng khóa học
 
@@ -179,9 +191,9 @@ Máy cá nhân dùng cùng `DATABASE_URL` với Render và phải có `SEPAY_API
 
 1. Người dùng chạy `/mua` hoặc bấm nút thanh toán trên forum.
 2. Khóa DRIVE hỏi email Google trước khi tạo QR; khóa STREAM và gói tháng tạo QR ngay.
-3. SePay báo tiền vào: DRIVE cấp quyền xem thư mục, STREAM mở quyền cho Discord ID.
-4. Với STREAM, người dùng chạy `/hoc`, chọn khóa/bài và nhận link `/learn?...`.
-5. Website yêu cầu Discord OAuth, kiểm quyền rồi cấp cookie phát HLS trong một giờ.
+3. SePay báo tiền vào: DRIVE cấp quyền xem thư mục, STREAM mua qua Discord mở quyền cho Discord ID. Khách không dùng Discord được admin cấp theo email bằng lệnh ở trên sau khi đối soát.
+4. Với STREAM, người dùng mở liên kết bài học `/learn?...` do Nixart hoặc bot Discord gửi.
+5. Website cho đăng nhập bằng Google hoặc Discord, kiểm quyền rồi cấp cookie phát HLS trong một giờ.
 
 Đơn HLS và DRIVE hết hiệu lực sau 30 phút để giá hoặc thư mục cũ không được sử dụng về sau. Link dự phòng DRIVE chỉ cấp quyền sau khi SePay đã đánh dấu đơn là `paid`. Nếu đã chuyển khoản sau thời hạn này, admin cần đối soát và xử lý thủ công.
 
