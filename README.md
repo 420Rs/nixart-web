@@ -108,6 +108,20 @@ Mua lẻ không hết hạn; gói tháng cộng dồn 30 ngày khi gia hạn cù
   -LessonId 'giao-dien'
 ```
 
+Một thư mục có nhiều video được đóng gói thành nhiều bài trong cùng khóa:
+
+```powershell
+.\scripts\package-hls-folder.ps1 `
+  -InputFolder 'D:\Videos\zbrush-workflow' `
+  -CourseId 'zbrush-workflow' `
+  -CourseTitle 'ZBrush Modeling Workflow' `
+  -StreamCopy
+```
+
+Tên file quyết định thứ tự và tên bài; mã bài ổn định có dạng `lesson-01`, `lesson-02`... Script chỉ bỏ qua playlist hoàn chỉnh khi SHA-256 của nguồn và thiết lập đóng gói vẫn khớp, nên có thể chạy tiếp an toàn sau khi bị gián đoạn; dùng `-Force` khi cần tạo lại. Catalog chỉ được cập nhật sau khi mọi bài đều có playlist hoàn chỉnh. Nếu khóa chưa tồn tại, script tạo một khóa nháp chưa công khai để chỉnh sửa tiếp trong Course Manager. `-StreamCopy` đóng gói rất nhanh và giữ nguyên độ phân giải/chất lượng, nhưng chỉ dùng được khi nguồn là H.264 8-bit yuv420p với audio AAC-LC; độ dài segment sẽ bám theo keyframe gần nhất của nguồn. Bỏ cờ này để encode lại nguồn khác về H.264/AAC 1080p với keyframe 6 giây.
+
+Dùng `-Limit 2` để chỉ đưa hai video đầu vào catalog khi thử nghiệm. Việc rút gọn chỉ được phép với khóa nháp chưa xác nhận quyền, chưa định giá, chưa công khai và chưa mở bán. Những bài HLS khác đã tạo trên ổ đĩa vẫn được giữ lại nhưng không thể truy cập nếu không có trong catalog.
+
 Kết quả:
 
 ```text
@@ -118,7 +132,7 @@ media/blender-co-ban/giao-dien/
 └── ...
 ```
 
-Video mặc định được encode 720p H.264/AAC, segment 6 giây. Thư mục `media/` bị Git bỏ qua để tránh đẩy video lên GitHub.
+Video mặc định được encode 1080p H.264/AAC, segment 6 giây. Thư mục `media/` bị Git bỏ qua để tránh đẩy video lên GitHub.
 
 Script tạo segment có tên theo phiên bản và chỉ thay `index.m3u8` sau khi encode thành công, nên người đang xem không nhận file dở dang. Segment phiên bản cũ được giữ lại; có thể xóa chúng sau khi không còn phiên xem cũ (nên chờ ít nhất hai giờ).
 

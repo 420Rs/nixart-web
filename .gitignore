@@ -5,6 +5,7 @@ node_modules/
 media/*
 !media/.gitkeep
 content/catalog.json.manager-backup
+content/catalog.json.hls-backup
 content/.catalog.json.*.tmp
 content/delivery.private.json*
 content/.delivery.private.json.*.tmp
