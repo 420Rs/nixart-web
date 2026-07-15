@@ -280,6 +280,7 @@ test("Google OAuth requests identity only and verifies signed claims strictly", 
     assert.equal(external.emailAuthoritative, false);
     assert.equal(googleAuth.validateGoogleClaims({ ...claims, email: "user@gmail.com" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now).emailAuthoritative, true);
     assert.equal(googleAuth.validateGoogleClaims({ ...claims, email: "user@studio.test", hd: "studio.test" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now).emailAuthoritative, true);
+    assert.equal(googleAuth.validateGoogleClaims({ ...claims, email: "user@alias.test", hd: "workspace.test" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now).emailAuthoritative, true);
     assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, email_verified: "true" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /not verified/);
     assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, aud: "other-client" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /audience/);
     assert.throws(() => googleAuth.validateGoogleClaims({ ...claims, nonce: "wrong" }, state.n, process.env.GOOGLE_OAUTH_CLIENT_ID, now), /nonce/);
@@ -317,6 +318,24 @@ test("Google access grant creates a pending UUID-bound order and rejects weak ex
   assert.equal(granted.userId, "");
   assert.equal(granted.reused, false);
   assert.equal(queries.some(query => query.source.includes("'admin-email'") && query.values.includes("user@gmail.com")), true);
+
+  await assert.rejects(
+    grantEmailAccess({ email: "user+promo@gmail.com", scope: "full", value: "full" }, pendingSql),
+    /không dùng alias \+tag/
+  );
+
+  const knownUserId = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  let knownQueryCount = 0;
+  const knownIdentitySql = async strings => {
+    const source = strings.join(" ? ");
+    knownQueryCount += 1;
+    if (source.includes("FROM app_users")) return [{ id: knownUserId, authoritative: true }];
+    if (source.includes("INSERT INTO purchase_orders")) return [{ access_expires_at: "2030-01-01T00:00:00.000Z" }];
+    throw new Error("Grant must not run a fallible post-insert sync");
+  };
+  const knownGrant = await grantEmailAccess({ email: "known@gmail.com", scope: "full", value: "full" }, knownIdentitySql);
+  assert.equal(knownGrant.userId, knownUserId);
+  assert.equal(knownQueryCount, 2);
 
   const weakIdentitySql = async (strings) => {
     const source = strings.join(" ? ");

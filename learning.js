@@ -488,6 +488,10 @@ async function hasCourseAccess(user, course) {
 async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOverride) {
   const normalizedEmail = googleEmail(email);
   if (!normalizedEmail) throw new Error("Email Google không hợp lệ");
+  const [emailLocal, emailDomain] = normalizedEmail.split("@");
+  if (emailDomain === "gmail.com" && emailLocal.includes("+")) {
+    throw new Error("Hãy dùng email Gmail chính, không dùng alias +tag");
+  }
   const product = grantProductFor(cleanId(scope), cleanId(value));
   if (!product || product.deliveryType !== "hls") throw new Error("Chỉ có thể cấp quyền email cho khóa STREAM hoặc gói tháng");
   if (!sqlOverride) await ensureLearningTables();
@@ -565,7 +569,6 @@ async function grantEmailAccess({ email, scope, value, displayName = "" }, sqlOv
     )
     RETURNING access_expires_at
   `;
-  if (userId) await claimUserEntitlements({ id: userId }, sqlOverride);
   return {
     purchaseCode,
     product: product.title,

@@ -65,6 +65,8 @@ Nếu Gmail/Google Workspace chưa từng đăng nhập, quyền sẽ chờ và 
 
 Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa/xóa khóa học, dán URL ảnh bìa và link xem trước, chọn cách giao nội dung; mỗi lần lưu sẽ cập nhật web và tự đồng bộ bài đăng forum Discord. Xóa cần xác nhận, gỡ khóa khỏi catalog và xóa đúng bài forum do bot tạo nhưng không xóa file HLS, lịch sử đơn hàng hoặc quyền Drive đã cấp. Các URL phải dùng HTTPS.
 
+Nút `CẤP QUYỀN EMAIL` mở hộp thoại để dán đúng email Google và chọn gói tháng hoặc một khóa STREAM. Mặc định là gói Full 30 ngày; cấp lại gói sẽ cộng thêm thời hạn, còn quyền mua lẻ một khóa không hết hạn. Gmail có thể được cấp trước lần đăng nhập đầu tiên. Với Google Workspace, người học cần đăng nhập Google trên web một lần trước khi admin cấp để hệ thống xác minh tổ chức của tài khoản.
+
 - `Gói Basic`: cả gói 200k và 500k đều xem được các khóa STREAM Basic.
 - `Gói Full`: gói 500k xem được toàn bộ khóa STREAM; DRIVE chỉ bán lẻ vì chưa có cơ chế thu hồi quyền thư mục khi gói tháng hết hạn.
 - Chỉ xác nhận quyền phân phối khi bạn thực sự có quyền với nội dung.

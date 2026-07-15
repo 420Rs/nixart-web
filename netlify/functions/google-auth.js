@@ -105,7 +105,7 @@ function validateGoogleClaims(payload, expectedNonce, clientId, nowSeconds = Mat
   const name = String(payload?.name || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 100);
   const domain = email.split("@")[1];
   const hostedDomain = String(payload?.hd || "").trim().toLowerCase();
-  const emailAuthoritative = domain === "gmail.com" || (Boolean(hostedDomain) && hostedDomain === domain);
+  const emailAuthoritative = domain === "gmail.com" || Boolean(hostedDomain);
   return { sub, email, name: name || email, picture: safePicture(payload?.picture), emailAuthoritative };
 }
 

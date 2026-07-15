@@ -147,6 +147,22 @@ function Test-HttpsUrl {
     $uri.AbsoluteUri.Length -le $MaxLength
 }
 
+function Normalize-GoogleAccessEmail {
+  param([string]$Value)
+
+  $email = ([string]$Value).Trim().ToLowerInvariant()
+  if (-not $email -or $email.Length -gt 254 -or $email -match '[\s"\\\p{Cc}]') { return "" }
+  $parts = @($email -split "@", 2)
+  if ($parts.Count -ne 2) { return "" }
+  $local = $parts[0]
+  $domain = $parts[1]
+  if ($local.StartsWith(".") -or $local.EndsWith(".") -or $local.Contains("..") -or $local.Contains("+")) { return "" }
+  $atomPattern = '^[a-z0-9.!#$%&''*+/=?^_`{|}~-]{1,64}$'
+  $domainPattern = '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$'
+  if ($local -cnotmatch $atomPattern -or $domain -cnotmatch $domainPattern) { return "" }
+  $email
+}
+
 function Resolve-DriveFolderId {
   param([string]$Value)
 
@@ -271,6 +287,10 @@ function Invoke-SelfTest {
   $ids = @([pscustomobject]@{ id = "khoa-hoc" })
   if ((New-UniqueCourseId "Khóa học" $ids) -ne "khoa-hoc-2") { throw "Slug duy nhất thất bại" }
   if (-not (Test-HttpsUrl "https://example.com/cover.jpg") -or (Test-HttpsUrl "http://example.com")) { throw "Kiểm tra HTTPS thất bại" }
+  if ((Normalize-GoogleAccessEmail " User@Gmail.com ") -ne "user@gmail.com") { throw "Chuẩn hóa email Google thất bại" }
+  if (Normalize-GoogleAccessEmail 'Name <user@gmail.com>') { throw "Không chặn email dạng display name" }
+  if (Normalize-GoogleAccessEmail 'user+tag@gmail.com') { throw "Không chặn alias +tag" }
+  if (Normalize-GoogleAccessEmail 'user+tag@gmail.com" --plan full') { throw "Không chặn ký tự dòng lệnh trong email" }
   $folderId = "1AbCdEfGhIjKlMnOpQrStUvWxYz"
   if ((Resolve-DriveFolderId "https://drive.google.com/drive/u/0/folders/${folderId}?usp=sharing") -ne $folderId) { throw "Chuẩn hóa URL Drive thất bại" }
   if ((Resolve-DriveFolderId $folderId) -ne $folderId -or (Resolve-DriveFolderId "https://example.com/drive/folders/$folderId")) { throw "Kiểm tra folder Drive thất bại" }
@@ -413,8 +433,8 @@ $header.Controls.Add($subheading)
 
 $statusLabel = New-Object Windows.Forms.Label
 $statusLabel.Text = "SẴN SÀNG  ·  Chưa có thay đổi"
-$statusLabel.Location = New-Object Drawing.Point(750, 20)
-$statusLabel.Size = New-Object Drawing.Size(272, 36)
+$statusLabel.Location = New-Object Drawing.Point(650, 20)
+$statusLabel.Size = New-Object Drawing.Size(230, 36)
 $statusLabel.Anchor = "Top, Right"
 $statusLabel.BackColor = $surface2
 $statusLabel.ForeColor = $muted
@@ -424,10 +444,23 @@ $statusLabel.AutoEllipsis = $true
 $statusLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $header.Controls.Add($statusLabel)
 
+$accessButton = New-Object Windows.Forms.Button
+$accessButton.Text = "CẤP QUYỀN EMAIL"
+$accessButton.Size = New-Object Drawing.Size(160, 38)
+$accessButton.Location = New-Object Drawing.Point(894, 19)
+$accessButton.Anchor = "Top, Right"
+$accessButton.FlatStyle = "Flat"
+$accessButton.BackColor = $surface2
+$accessButton.ForeColor = $success
+$accessButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$accessButton.FlatAppearance.BorderColor = $success
+$accessButton.FlatAppearance.MouseOverBackColor = [Drawing.Color]::FromArgb(26, 49, 38)
+$header.Controls.Add($accessButton)
+
 $syncButton = New-Object Windows.Forms.Button
 $syncButton.Text = "ĐỒNG BỘ DISCORD"
-$syncButton.Size = New-Object Drawing.Size(216, 38)
-$syncButton.Location = New-Object Drawing.Point(1042, 19)
+$syncButton.Size = New-Object Drawing.Size(190, 38)
+$syncButton.Location = New-Object Drawing.Point(1068, 19)
 $syncButton.Anchor = "Top, Right"
 $syncButton.FlatStyle = "Flat"
 $syncButton.BackColor = $discord
@@ -811,6 +844,82 @@ function Invoke-DiscordCourseDelete {
   $stdout
 }
 
+function Get-GoogleAccessOptions {
+  $options = @()
+  foreach ($planId in @("full", "basic")) {
+    $plan = @($script:Catalog.plans) | Where-Object { [string]$_.id -ceq $planId } | Select-Object -First 1
+    if ($null -ne $plan) {
+      $days = [Math]::Max(1, [int]$plan.durationDays)
+      $options += [pscustomobject]@{
+        Label = "Gói $([string]$plan.title) · $days ngày"
+        Kind = "plan"
+        Value = $planId
+      }
+    }
+  }
+  foreach ($course in @($script:Catalog.courses)) {
+    $courseId = [string]$course.id
+    $hasPublishedLesson = @($course.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
+    if ($courseId -cmatch '^[a-z0-9][a-z0-9_-]{0,79}$' -and
+        $course.published -eq $true -and $course.rightsVerified -eq $true -and
+        (Get-CourseDeliveryMode $course) -eq "STREAM" -and $hasPublishedLesson) {
+      $options += [pscustomobject]@{
+        Label = "Khóa · $([string]$course.title) · $courseId"
+        Kind = "course"
+        Value = $courseId
+      }
+    }
+  }
+  @($options)
+}
+
+function Invoke-GoogleAccessGrant {
+  param([string]$Email, [string]$Kind, [string]$Value)
+
+  $email = Normalize-GoogleAccessEmail $Email
+  if (-not $email) { throw "Hãy nhập đúng một email Google hợp lệ." }
+  if ($Kind -eq "plan") {
+    if (@("basic", "full") -notcontains $Value) { throw "Gói truy cập không hợp lệ." }
+    $selector = "--plan"
+  } elseif ($Kind -eq "course") {
+    if ($Value -cnotmatch '^[a-z0-9][a-z0-9_-]{0,79}$') { throw "Mã khóa học không hợp lệ." }
+    $selector = "--course"
+  } else {
+    throw "Loại quyền truy cập không hợp lệ."
+  }
+
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = '--env-file-if-exists=.env scripts/grant-google-access.js --email "{0}" {1} {2}' -f $email, $selector, $Value
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+
+  $process = New-Object Diagnostics.Process
+  try {
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy tiến trình cấp quyền." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.Result.Trim()
+    $stderr = $stderrTask.Result.Trim()
+    $exitCode = $process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
+  if ($exitCode -ne 0) {
+    if ($stderr) { throw $stderr }
+    throw "Không thể cấp quyền (mã $exitCode)."
+  }
+  if ($stdout) { return $stdout }
+  "Đã cấp quyền cho $email."
+}
+
 function Clear-Editor {
   $script:EditingCourseId = ""
   $titleBox.Clear()
@@ -903,6 +1012,154 @@ function Load-CourseIntoEditor {
 
 $newButton.Add_Click({ Clear-Editor })
 $cancelButton.Add_Click({ Clear-Editor })
+$accessButton.Add_Click({
+  if ($script:SyncRunning) { return }
+  $options = @(Get-GoogleAccessOptions)
+  if ($options.Count -eq 0) {
+    [Windows.Forms.MessageBox]::Show("Chưa có gói hoặc khóa STREAM đủ điều kiện để cấp quyền.", "Chưa có quyền để cấp", "OK", "Information") | Out-Null
+    return
+  }
+
+  $dialog = New-Object Windows.Forms.Form
+  $dialog.Text = "Cấp quyền truy cập Google"
+  $dialog.StartPosition = "CenterParent"
+  $dialog.FormBorderStyle = "FixedDialog"
+  $dialog.MaximizeBox = $false
+  $dialog.MinimizeBox = $false
+  $dialog.ShowInTaskbar = $false
+  $dialog.ClientSize = New-Object Drawing.Size(590, 310)
+  $dialog.BackColor = $bg
+  $dialog.ForeColor = $text
+  $dialog.Font = New-Object Drawing.Font("Segoe UI", 10)
+
+  $accessTitle = New-Object Windows.Forms.Label
+  $accessTitle.Text = "CẤP QUYỀN HỌC"
+  $accessTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 14)
+  $accessTitle.AutoSize = $true
+  $accessTitle.Location = New-Object Drawing.Point(22, 18)
+  $dialog.Controls.Add($accessTitle)
+
+  $accessCopy = New-Object Windows.Forms.Label
+  $accessCopy.Text = "Dán email chính dùng để đăng nhập Google (không dùng alias +tag)."
+  $accessCopy.ForeColor = $muted
+  $accessCopy.AutoSize = $true
+  $accessCopy.Location = New-Object Drawing.Point(23, 49)
+  $dialog.Controls.Add($accessCopy)
+
+  $accessEmailLabel = New-Object Windows.Forms.Label
+  $accessEmailLabel.Text = "EMAIL GOOGLE"
+  $accessEmailLabel.ForeColor = $muted
+  $accessEmailLabel.AutoSize = $true
+  $accessEmailLabel.Location = New-Object Drawing.Point(23, 82)
+  $dialog.Controls.Add($accessEmailLabel)
+
+  $accessEmailBox = New-Object Windows.Forms.TextBox
+  $accessEmailBox.Location = New-Object Drawing.Point(26, 104)
+  $accessEmailBox.Size = New-Object Drawing.Size(538, 30)
+  $accessEmailBox.BackColor = $surface2
+  $accessEmailBox.ForeColor = $text
+  $accessEmailBox.BorderStyle = "FixedSingle"
+  $accessEmailBox.MaxLength = 254
+  $dialog.Controls.Add($accessEmailBox)
+
+  $accessScopeLabel = New-Object Windows.Forms.Label
+  $accessScopeLabel.Text = "PHẠM VI QUYỀN"
+  $accessScopeLabel.ForeColor = $muted
+  $accessScopeLabel.AutoSize = $true
+  $accessScopeLabel.Location = New-Object Drawing.Point(23, 145)
+  $dialog.Controls.Add($accessScopeLabel)
+
+  $accessScopeBox = New-Object Windows.Forms.ComboBox
+  $accessScopeBox.Location = New-Object Drawing.Point(26, 168)
+  $accessScopeBox.Size = New-Object Drawing.Size(538, 32)
+  $accessScopeBox.DropDownStyle = "DropDownList"
+  $accessScopeBox.BackColor = $surface2
+  $accessScopeBox.ForeColor = $text
+  $accessScopeBox.DisplayMember = "Label"
+  foreach ($option in $options) { [void]$accessScopeBox.Items.Add($option) }
+  $accessScopeBox.SelectedIndex = 0
+  $dialog.Controls.Add($accessScopeBox)
+
+  $accessHint = New-Object Windows.Forms.Label
+  $accessHint.ForeColor = $muted
+  $accessHint.Size = New-Object Drawing.Size(538, 36)
+  $accessHint.Location = New-Object Drawing.Point(23, 207)
+  $dialog.Controls.Add($accessHint)
+  $updateAccessHint = {
+    $selected = $accessScopeBox.SelectedItem
+    $accessHint.Text = if ($null -ne $selected -and $selected.Kind -eq "plan") {
+      "Gói tháng bắt đầu từ lúc cấp; cấp lại sẽ cộng thêm thời hạn. Workspace phải đăng nhập Google một lần trước."
+    } else {
+      "Quyền khóa học không hết hạn. Gmail có thể cấp trước lần đăng nhập đầu tiên."
+    }
+  }
+  $accessScopeBox.Add_SelectedIndexChanged($updateAccessHint)
+  & $updateAccessHint
+
+  $closeAccessButton = New-Object Windows.Forms.Button
+  $closeAccessButton.Text = "HỦY"
+  $closeAccessButton.Size = New-Object Drawing.Size(110, 36)
+  $closeAccessButton.Location = New-Object Drawing.Point(334, 256)
+  $closeAccessButton.FlatStyle = "Flat"
+  $closeAccessButton.BackColor = $surface
+  $closeAccessButton.ForeColor = $muted
+  $closeAccessButton.FlatAppearance.BorderColor = $border
+  $closeAccessButton.DialogResult = [Windows.Forms.DialogResult]::Cancel
+  $dialog.Controls.Add($closeAccessButton)
+
+  $grantAccessButton = New-Object Windows.Forms.Button
+  $grantAccessButton.Text = "CẤP QUYỀN"
+  $grantAccessButton.Size = New-Object Drawing.Size(120, 36)
+  $grantAccessButton.Location = New-Object Drawing.Point(454, 256)
+  $grantAccessButton.FlatStyle = "Flat"
+  $grantAccessButton.BackColor = $success
+  $grantAccessButton.ForeColor = $bg
+  $grantAccessButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
+  $grantAccessButton.FlatAppearance.BorderColor = $success
+  $dialog.Controls.Add($grantAccessButton)
+
+  $grantAccessButton.Add_Click({
+    $email = Normalize-GoogleAccessEmail $accessEmailBox.Text
+    $selected = $accessScopeBox.SelectedItem
+    if (-not $email -or $null -eq $selected) {
+      [Windows.Forms.MessageBox]::Show("Hãy nhập đúng một email Google và chọn phạm vi quyền.", "Dữ liệu chưa hợp lệ", "OK", "Warning") | Out-Null
+      return
+    }
+    try {
+      $dialog.UseWaitCursor = $true
+      $accessEmailBox.Enabled = $false
+      $accessScopeBox.Enabled = $false
+      $grantAccessButton.Enabled = $false
+      $closeAccessButton.Enabled = $false
+      $output = Invoke-GoogleAccessGrant $email ([string]$selected.Kind) ([string]$selected.Value)
+      $statusLabel.Text = "Đã cấp quyền Google."
+      $statusLabel.ForeColor = $success
+      Write-Log "CẤP QUYỀN: $output"
+      [Windows.Forms.MessageBox]::Show($output, "Đã cấp quyền", "OK", "Information") | Out-Null
+      $dialog.DialogResult = [Windows.Forms.DialogResult]::OK
+      $dialog.Close()
+    } catch {
+      $statusLabel.Text = "Cấp quyền chưa hoàn tất."
+      $statusLabel.ForeColor = $danger
+      Write-Log "LỖI CẤP QUYỀN: $($_.Exception.Message)"
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể cấp quyền", "OK", "Error") | Out-Null
+    } finally {
+      if (-not $dialog.IsDisposed) {
+        $dialog.UseWaitCursor = $false
+        $accessEmailBox.Enabled = $true
+        $accessScopeBox.Enabled = $true
+        $grantAccessButton.Enabled = $true
+        $closeAccessButton.Enabled = $true
+      }
+    }
+  })
+
+  $dialog.AcceptButton = $grantAccessButton
+  $dialog.CancelButton = $closeAccessButton
+  [void]$accessEmailBox.Focus()
+  [void]$dialog.ShowDialog($form)
+  $dialog.Dispose()
+})
 $deleteButton.Add_Click({
   if ($script:SyncRunning -or -not $script:EditingCourseId) { return }
   $courseId = $script:EditingCourseId
@@ -937,6 +1194,7 @@ $deleteButton.Add_Click({
 
     $form.UseWaitCursor = $true
     $syncButton.Enabled = $false
+    $accessButton.Enabled = $false
     $listToolbar.Enabled = $false
     $courseGrid.Enabled = $false
     $editor.Enabled = $false
@@ -982,6 +1240,7 @@ $deleteButton.Add_Click({
   } finally {
     $form.UseWaitCursor = $false
     $syncButton.Enabled = $true
+    $accessButton.Enabled = $true
     $listToolbar.Enabled = $true
     $courseGrid.Enabled = $true
     $editor.Enabled = $true
@@ -1102,6 +1361,7 @@ $syncTimer.Add_Tick({
   $script:SyncStderrTask = $null
   $script:SyncRunning = $false
   $syncButton.Enabled = $true
+  $accessButton.Enabled = $true
   $listToolbar.Enabled = $true
   $courseGrid.Enabled = $true
   $editor.Enabled = $true
@@ -1136,6 +1396,7 @@ $syncButton.Add_Click({
   try {
     $script:SyncRunning = $true
     $syncButton.Enabled = $false
+    $accessButton.Enabled = $false
     $listToolbar.Enabled = $false
     $courseGrid.Enabled = $false
     $editor.Enabled = $false
@@ -1166,6 +1427,7 @@ $syncButton.Add_Click({
     $script:SyncStderrTask = $null
     $script:SyncRunning = $false
     $syncButton.Enabled = $true
+    $accessButton.Enabled = $true
     $listToolbar.Enabled = $true
     $courseGrid.Enabled = $true
     $editor.Enabled = $true
@@ -1204,6 +1466,10 @@ try {
     if ($saveButton.Bottom -gt $editorHeader.ClientSize.Height -or $cancelButton.Bottom -gt $editorHeader.ClientSize.Height) { throw "Nút lưu hoặc hủy nằm ngoài header trình sửa." }
     if ($deleteButton.Parent -ne $listToolbar -or $newButton.Bounds.IntersectsWith($deleteButton.Bounds)) { throw "Nút tạo mới và xóa bài đăng sai vị trí hoặc đang chồng nhau." }
     if ($deleteButton.Enabled) { throw "Nút xóa phải tắt khi chưa chọn khóa học." }
+    if ($accessButton.Parent -ne $header -or $statusLabel.Bounds.IntersectsWith($accessButton.Bounds) -or $accessButton.Bounds.IntersectsWith($syncButton.Bounds)) { throw "Nút cấp quyền email sai vị trí hoặc đang chồng nhau." }
+    if ($statusLabel.Bottom -gt $header.ClientSize.Height -or $accessButton.Bottom -gt $header.ClientSize.Height -or $syncButton.Bottom -gt $header.ClientSize.Height) { throw "Điều khiển header nằm ngoài khung." }
+    $accessOptions = @(Get-GoogleAccessOptions)
+    if ($accessOptions.Count -eq 0 -or $accessOptions[0].Kind -ne "plan" -or $accessOptions[0].Value -ne "full") { throw "Cấp quyền phải mặc định gói Full." }
     Write-Host ("LAYOUT-TEST OK form={0}x{1} content={2} editor={3}px log={4}" -f $form.ClientSize.Width, $form.ClientSize.Height, $split.Bounds, $split.Panel2.ClientSize.Width, $outputGroup.Bounds)
     $form.Close()
   } else {
