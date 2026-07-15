@@ -258,6 +258,30 @@ async function getArchivedThreads(rest, channelId) {
   return threads;
 }
 
+async function deleteForumCoursePost(courseId, channelId, token, rest) {
+  if (!ID_RE.test(String(courseId || ""))) throw new Error("Mã khóa học cần xóa không hợp lệ");
+  rest ||= new REST({ version: "10" }).setToken(token);
+  const [channel, botUser] = await Promise.all([
+    rest.get(Routes.channel(channelId)),
+    rest.get("/users/@me"),
+  ]);
+  if (channel.type !== ChannelType.GuildForum || !channel.guild_id) {
+    throw new Error(`Channel ${channelId} không phải GuildForum`);
+  }
+  const [active, archived] = await Promise.all([
+    rest.get(Routes.guildActiveThreads(channel.guild_id)),
+    getArchivedThreads(rest, channelId),
+  ]);
+  const existing = await indexExistingThreads(rest, [...(active.threads || []), ...archived], channelId, botUser.id);
+  const thread = existing.get(courseId);
+  if (!thread) {
+    throw new Error(`Không tìm thấy bài Discord do bot tạo cho khóa ${courseId}; chưa xóa catalog`);
+  }
+  await rest.delete(Routes.channel(thread.id));
+  console.log(`DELETED ${thread.name}`);
+  return true;
+}
+
 async function publish(courses, channelId, token) {
   const rest = new REST({ version: "10" }).setToken(token);
   const [channel, botUser] = await Promise.all([
@@ -314,6 +338,16 @@ async function publish(courses, channelId, token) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args[0] === "--delete-course") {
+    if (args.length !== 2 || !ID_RE.test(args[1])) throw new Error("Dùng --delete-course <course-id>");
+    if (!process.env.DISCORD_BOT_TOKEN) throw new Error("Thiếu DISCORD_BOT_TOKEN; chưa xóa nội dung nào");
+    await deleteForumCoursePost(
+      args[1],
+      process.env.DISCORD_COURSE_CHANNEL_ID || DEFAULT_CHANNEL_ID,
+      process.env.DISCORD_BOT_TOKEN,
+    );
+    return;
+  }
   const publishMode = args.includes("--publish");
   const unknown = args.filter(arg => arg !== "--publish" && arg !== "--dry-run");
   if (unknown.length || (publishMode && args.includes("--dry-run"))) throw new Error("Dùng mặc định/--dry-run hoặc --publish");
@@ -340,6 +374,7 @@ module.exports = {
   buildForumPost,
   buildHiddenForumMessage,
   courseIdFromMessage,
+  deleteForumCoursePost,
   existingThreadNames,
   indexExistingThreads,
   deliveryTagIds,

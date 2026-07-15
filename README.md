@@ -51,7 +51,7 @@ Trong Discord Developer Portal:
 
 ## 2. Quản lý và đăng khóa học
 
-Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa khóa học, dán URL ảnh bìa và link xem trước, chọn cách giao nội dung; mỗi lần lưu sẽ cập nhật web và tự đồng bộ bài đăng forum Discord. Các URL phải dùng HTTPS.
+Trên Windows, nhấp đúp `Nixart Course Manager.exe` (`.cmd` là launcher dự phòng). App cho phép thêm/sửa/xóa khóa học, dán URL ảnh bìa và link xem trước, chọn cách giao nội dung; mỗi lần lưu sẽ cập nhật web và tự đồng bộ bài đăng forum Discord. Xóa cần xác nhận, gỡ khóa khỏi catalog và xóa đúng bài forum do bot tạo nhưng không xóa file HLS, lịch sử đơn hàng hoặc quyền Drive đã cấp. Các URL phải dùng HTTPS.
 
 - `Gói Basic`: cả gói 200k và 500k đều xem được các khóa STREAM Basic.
 - `Gói Full`: gói 500k xem được toàn bộ khóa STREAM; DRIVE chỉ bán lẻ vì chưa có cơ chế thu hồi quyền thư mục khi gói tháng hết hạn.

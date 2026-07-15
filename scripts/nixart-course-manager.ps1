@@ -203,6 +203,23 @@ function Set-PrivateDriveFolder {
   }
 }
 
+function Remove-CourseData {
+  param($Catalog, $Delivery, [string]$CourseId)
+
+  if ($CourseId -cnotmatch "^[a-z0-9][a-z0-9_-]{0,79}$") {
+    throw "Mã khóa học cần xóa không hợp lệ."
+  }
+  $courses = @($Catalog.courses)
+  $matches = @($courses | Where-Object { [string]$_.id -ceq $CourseId })
+  if ($matches.Count -eq 0) { throw "Không còn tìm thấy khóa học mã $CourseId." }
+  if ($matches.Count -ne 1) { throw "Catalog có nhiều khóa trùng mã $CourseId; chưa xóa nội dung nào." }
+  $course = $matches[0]
+
+  $Catalog.courses = @($courses | Where-Object { [string]$_.id -cne $CourseId })
+  Set-PrivateDriveFolder $Delivery $CourseId ""
+  $course
+}
+
 function Get-CourseValidationError {
   param(
     [string]$Title,
@@ -268,6 +285,35 @@ function Invoke-SelfTest {
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "") { throw "Khóa STREAM hợp lệ không thể mở bán" }
   if (Get-CourseValidationError "A" "" 0 "full" $true $true $false "NON-STREAM" $false "" "" "") { throw "Khóa NON-STREAM hợp lệ không thể công khai" }
 
+  $deleteCatalog = [pscustomobject][ordered]@{
+    courses = @(
+      [pscustomobject][ordered]@{ id = "keep"; title = "Giữ lại" },
+      [pscustomobject][ordered]@{ id = "remove"; title = "Xóa" }
+    )
+  }
+  $deleteDelivery = [pscustomobject][ordered]@{ driveFolders = [pscustomobject][ordered]@{} }
+  Set-PrivateDriveFolder $deleteDelivery "keep" $folderId
+  Set-PrivateDriveFolder $deleteDelivery "remove" "1ZyXwVuTsRqPoNmLkJiHgFeDcBa"
+  $removed = Remove-CourseData $deleteCatalog $deleteDelivery "remove"
+  if ($removed.id -ne "remove" -or @($deleteCatalog.courses).Count -ne 1 -or $deleteCatalog.courses[0].id -ne "keep") { throw "Xóa khóa khỏi catalog thất bại" }
+  if (Get-PrivateDriveFolder "remove" $deleteDelivery) { throw "Không xóa cấu hình Drive riêng của khóa" }
+  if ((Get-PrivateDriveFolder "keep" $deleteDelivery) -ne $folderId) { throw "Xóa nhầm cấu hình Drive của khóa khác" }
+  [void](Remove-CourseData $deleteCatalog $deleteDelivery "keep")
+  $deleteRoundTrip = $deleteCatalog | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+  if (@($deleteRoundTrip.courses).Count -ne 0) { throw "Catalog rỗng không giữ được mảng courses" }
+  $duplicateCatalog = [pscustomobject][ordered]@{
+    courses = @([pscustomobject]@{ id = "duplicate" }, [pscustomobject]@{ id = "duplicate" })
+  }
+  $duplicateRejected = $false
+  try {
+    [void](Remove-CourseData $duplicateCatalog ([pscustomobject]@{ driveFolders = [pscustomobject]@{} }) "duplicate")
+  } catch {
+    if ($_.Exception.Message -notmatch "trùng mã") { throw }
+    $duplicateRejected = $true
+  }
+  if (-not $duplicateRejected) { throw "Không chặn catalog trùng mã" }
+  if (@($duplicateCatalog.courses).Count -ne 2) { throw "Đã xóa dữ liệu khi catalog trùng mã" }
+
   $directory = Join-Path ([IO.Path]::GetTempPath()) ("nixart-manager-{0}" -f [Guid]::NewGuid().ToString("N"))
   [IO.Directory]::CreateDirectory($directory) | Out-Null
   $path = Join-Path $directory "catalog.json"
@@ -322,93 +368,180 @@ $border = [Drawing.Color]::FromArgb(42, 42, 46)
 $text = [Drawing.Color]::FromArgb(245, 245, 246)
 $muted = [Drawing.Color]::FromArgb(161, 161, 166)
 $success = [Drawing.Color]::FromArgb(94, 201, 138)
-$accent = [Drawing.Color]::FromArgb(245, 245, 246)
+$danger = [Drawing.Color]::FromArgb(255, 99, 99)
+$discord = [Drawing.Color]::FromArgb(88, 101, 242)
+$accent = $discord
 
 $form = New-Object Windows.Forms.Form
 $form.Text = "Nixart Course Manager"
 $form.StartPosition = "CenterScreen"
-$form.ClientSize = New-Object Drawing.Size(1180, 800)
-$form.MinimumSize = New-Object Drawing.Size(1050, 760)
+$form.ClientSize = New-Object Drawing.Size(1280, 820)
+$form.MinimumSize = New-Object Drawing.Size(1160, 760)
 $form.BackColor = $bg
 $form.ForeColor = $text
 $form.Font = New-Object Drawing.Font("Segoe UI", 10)
 
 $header = New-Object Windows.Forms.Panel
 $header.Dock = "Top"
-$header.Height = 68
-$header.Padding = New-Object Windows.Forms.Padding(22, 12, 22, 8)
+$header.Height = 76
 $header.BackColor = $bg
 $form.Controls.Add($header)
 
+$brandMark = New-Object Windows.Forms.Label
+$brandMark.Text = "NX"
+$brandMark.Location = New-Object Drawing.Point(20, 14)
+$brandMark.Size = New-Object Drawing.Size(48, 48)
+$brandMark.BackColor = $discord
+$brandMark.ForeColor = $text
+$brandMark.TextAlign = "MiddleCenter"
+$brandMark.Font = New-Object Drawing.Font("Segoe UI Semibold", 13)
+$header.Controls.Add($brandMark)
+
 $heading = New-Object Windows.Forms.Label
-$heading.Text = "NIXART  //  COURSE MANAGER"
-$heading.Font = New-Object Drawing.Font("Segoe UI Semibold", 15)
+$heading.Text = "QUẢN LÝ KHÓA HỌC"
+$heading.Font = New-Object Drawing.Font("Segoe UI Semibold", 14)
 $heading.AutoSize = $true
-$heading.Location = New-Object Drawing.Point(20, 10)
+$heading.Location = New-Object Drawing.Point(84, 13)
 $header.Controls.Add($heading)
 
 $subheading = New-Object Windows.Forms.Label
-$subheading.Text = "Lưu cập nhật web và tự đồng bộ bài đăng Discord."
+$subheading.Text = "Nixart catalog  /  Web & Discord publishing console"
 $subheading.ForeColor = $muted
 $subheading.AutoSize = $true
-$subheading.Location = New-Object Drawing.Point(22, 40)
+$subheading.Location = New-Object Drawing.Point(85, 42)
 $header.Controls.Add($subheading)
 
-$outputGroup = New-Object Windows.Forms.GroupBox
-$outputGroup.Text = "  Nhật ký  "
-$outputGroup.Dock = "Bottom"
-$outputGroup.Height = 180
-$outputGroup.Padding = New-Object Windows.Forms.Padding(12)
-$outputGroup.ForeColor = $text
-$form.Controls.Add($outputGroup)
-
-$syncBar = New-Object Windows.Forms.Panel
-$syncBar.Dock = "Top"
-$syncBar.Height = 44
-$outputGroup.Controls.Add($syncBar)
+$statusLabel = New-Object Windows.Forms.Label
+$statusLabel.Text = "SẴN SÀNG  ·  Chưa có thay đổi"
+$statusLabel.Location = New-Object Drawing.Point(750, 20)
+$statusLabel.Size = New-Object Drawing.Size(272, 36)
+$statusLabel.Anchor = "Top, Right"
+$statusLabel.BackColor = $surface2
+$statusLabel.ForeColor = $muted
+$statusLabel.BorderStyle = "FixedSingle"
+$statusLabel.TextAlign = "MiddleCenter"
+$statusLabel.AutoEllipsis = $true
+$statusLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$header.Controls.Add($statusLabel)
 
 $syncButton = New-Object Windows.Forms.Button
-$syncButton.Text = "ĐỒNG BỘ LÊN DISCORD"
-$syncButton.Size = New-Object Drawing.Size(220, 34)
-$syncButton.Location = New-Object Drawing.Point(0, 2)
+$syncButton.Text = "ĐỒNG BỘ DISCORD"
+$syncButton.Size = New-Object Drawing.Size(216, 38)
+$syncButton.Location = New-Object Drawing.Point(1042, 19)
+$syncButton.Anchor = "Top, Right"
 $syncButton.FlatStyle = "Flat"
-$syncButton.BackColor = $success
-$syncButton.ForeColor = $bg
+$syncButton.BackColor = $discord
+$syncButton.ForeColor = $text
 $syncButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
-$syncButton.FlatAppearance.BorderColor = $success
-$syncBar.Controls.Add($syncButton)
+$syncButton.FlatAppearance.BorderColor = $discord
+$syncButton.FlatAppearance.MouseOverBackColor = [Drawing.Color]::FromArgb(105, 116, 245)
+$header.Controls.Add($syncButton)
 
-$statusLabel = New-Object Windows.Forms.Label
-$statusLabel.Text = "Chưa có thay đổi mới."
-$statusLabel.ForeColor = $muted
-$statusLabel.AutoSize = $true
-$statusLabel.Location = New-Object Drawing.Point(235, 11)
-$syncBar.Controls.Add($statusLabel)
+$headerBorder = New-Object Windows.Forms.Panel
+$headerBorder.Dock = "Bottom"
+$headerBorder.Height = 1
+$headerBorder.BackColor = $border
+$header.Controls.Add($headerBorder)
+
+$outputGroup = New-Object Windows.Forms.Panel
+$outputGroup.Dock = "Bottom"
+$outputGroup.Height = 150
+$outputGroup.BackColor = $surface
+$outputGroup.ForeColor = $text
+$outputGroup.Padding = New-Object Windows.Forms.Padding(14, 31, 14, 12)
+$form.Controls.Add($outputGroup)
+
+$logTitle = New-Object Windows.Forms.Label
+$logTitle.Text = "NHẬT KÝ HỆ THỐNG"
+$logTitle.ForeColor = $muted
+$logTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 8)
+$logTitle.AutoSize = $true
+$logTitle.Location = New-Object Drawing.Point(15, 8)
+$outputGroup.Controls.Add($logTitle)
 
 $outputBox = New-Object Windows.Forms.RichTextBox
 $outputBox.Dock = "Fill"
 $outputBox.ReadOnly = $true
-$outputBox.BackColor = $surface
+$outputBox.BackColor = $bg
 $outputBox.ForeColor = $text
-$outputBox.BorderStyle = "FixedSingle"
+$outputBox.BorderStyle = "None"
 $outputBox.Font = New-Object Drawing.Font("Cascadia Mono", 9)
 $outputGroup.Controls.Add($outputBox)
 $outputBox.BringToFront()
 
 $split = New-Object Windows.Forms.SplitContainer
 $split.Dock = "Fill"
-$split.SplitterWidth = 8
+$split.SplitterWidth = 10
 $split.BackColor = $bg
+$split.Panel1.Padding = New-Object Windows.Forms.Padding(18, 12, 5, 12)
+$split.Panel2.Padding = New-Object Windows.Forms.Padding(5, 12, 18, 12)
 $form.Controls.Add($split)
-$split.SplitterDistance = 650
+$split.SplitterDistance = 610
+$split.Panel1MinSize = 500
+$split.Panel2MinSize = 500
 $split.BringToFront()
 
-$listGroup = New-Object Windows.Forms.GroupBox
-$listGroup.Text = "  Các khóa học hiện có  "
+$listGroup = New-Object Windows.Forms.Panel
 $listGroup.Dock = "Fill"
-$listGroup.Padding = New-Object Windows.Forms.Padding(12)
+$listGroup.Padding = New-Object Windows.Forms.Padding(1)
+$listGroup.BackColor = $border
 $listGroup.ForeColor = $text
 $split.Panel1.Controls.Add($listGroup)
+
+$listSurface = New-Object Windows.Forms.Panel
+$listSurface.Dock = "Fill"
+$listSurface.Padding = New-Object Windows.Forms.Padding(0, 58, 0, 0)
+$listSurface.BackColor = $surface
+$listGroup.Controls.Add($listSurface)
+
+$listToolbar = New-Object Windows.Forms.Panel
+$listToolbar.Location = New-Object Drawing.Point(1, 1)
+$listToolbar.Size = New-Object Drawing.Size(584, 58)
+$listToolbar.Anchor = "Top, Left, Right"
+$listToolbar.BackColor = $surface
+$listGroup.Controls.Add($listToolbar)
+$listToolbar.BringToFront()
+
+$catalogTitle = New-Object Windows.Forms.Label
+$catalogTitle.Text = "CATALOG"
+$catalogTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 10)
+$catalogTitle.AutoSize = $true
+$catalogTitle.Location = New-Object Drawing.Point(14, 10)
+$listToolbar.Controls.Add($catalogTitle)
+
+$catalogSubtitle = New-Object Windows.Forms.Label
+$catalogSubtitle.Text = "Chọn một khóa để chỉnh sửa"
+$catalogSubtitle.ForeColor = $muted
+$catalogSubtitle.Font = New-Object Drawing.Font("Segoe UI", 8)
+$catalogSubtitle.AutoSize = $true
+$catalogSubtitle.Location = New-Object Drawing.Point(15, 31)
+$listToolbar.Controls.Add($catalogSubtitle)
+
+$newButton = New-Object Windows.Forms.Button
+$newButton.Text = "+  KHÓA MỚI"
+$newButton.Size = New-Object Drawing.Size(128, 34)
+$newButton.Location = New-Object Drawing.Point(299, 12)
+$newButton.Anchor = "Top, Right"
+$newButton.FlatStyle = "Flat"
+$newButton.BackColor = $discord
+$newButton.ForeColor = $text
+$newButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$newButton.FlatAppearance.BorderColor = $discord
+$listToolbar.Controls.Add($newButton)
+
+$deleteButton = New-Object Windows.Forms.Button
+$deleteButton.Text = "XÓA BÀI ĐĂNG"
+$deleteButton.Size = New-Object Drawing.Size(132, 34)
+$deleteButton.Location = New-Object Drawing.Point(437, 12)
+$deleteButton.Anchor = "Top, Right"
+$deleteButton.FlatStyle = "Flat"
+$deleteButton.BackColor = $surface
+$deleteButton.ForeColor = $danger
+$deleteButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$deleteButton.FlatAppearance.BorderColor = $danger
+$deleteButton.FlatAppearance.MouseOverBackColor = $surface2
+$deleteButton.Enabled = $false
+$listToolbar.Controls.Add($deleteButton)
 
 $courseGrid = New-Object Windows.Forms.DataGridView
 $courseGrid.Dock = "Fill"
@@ -426,20 +559,29 @@ $courseGrid.GridColor = $border
 $courseGrid.EnableHeadersVisualStyles = $false
 $courseGrid.ColumnHeadersDefaultCellStyle.BackColor = $surface2
 $courseGrid.ColumnHeadersDefaultCellStyle.ForeColor = $text
+$courseGrid.ColumnHeadersDefaultCellStyle.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$courseGrid.ColumnHeadersDefaultCellStyle.Padding = New-Object Windows.Forms.Padding(6, 0, 6, 0)
+$courseGrid.ColumnHeadersHeight = 40
+$courseGrid.ColumnHeadersHeightSizeMode = "DisableResizing"
 $courseGrid.DefaultCellStyle.BackColor = $surface
 $courseGrid.DefaultCellStyle.ForeColor = $text
-$courseGrid.DefaultCellStyle.SelectionBackColor = $border
+$courseGrid.DefaultCellStyle.Font = New-Object Drawing.Font("Segoe UI", 9)
+$courseGrid.DefaultCellStyle.Padding = New-Object Windows.Forms.Padding(7, 0, 7, 0)
+$courseGrid.DefaultCellStyle.SelectionBackColor = $discord
 $courseGrid.DefaultCellStyle.SelectionForeColor = $text
-$listGroup.Controls.Add($courseGrid)
+$courseGrid.AlternatingRowsDefaultCellStyle.BackColor = $surface2
+$courseGrid.RowTemplate.Height = 40
+$courseGrid.ScrollBars = "Vertical"
+$listSurface.Controls.Add($courseGrid)
 
 foreach ($columnInfo in @(
-  @{ Name = "Tên khóa học"; Width = 260 },
-  @{ Name = "Giá"; Width = 95 },
-  @{ Name = "Gói"; Width = 65 },
-  @{ Name = "Cấu hình"; Width = 115 },
-  @{ Name = "Quyền"; Width = 70 },
-  @{ Name = "Web"; Width = 60 },
-  @{ Name = "Mở bán"; Width = 75 }
+  @{ Name = "Tên khóa học"; Width = 190 },
+  @{ Name = "Giá"; Width = 82 },
+  @{ Name = "Gói"; Width = 50 },
+  @{ Name = "Cấu hình"; Width = 82 },
+  @{ Name = "Quyền"; Width = 52 },
+  @{ Name = "Web"; Width = 46 },
+  @{ Name = "Mở bán"; Width = 58 }
 )) {
   $column = New-Object Windows.Forms.DataGridViewTextBoxColumn
   $column.HeaderText = $columnInfo.Name
@@ -448,102 +590,147 @@ foreach ($columnInfo in @(
   [void]$courseGrid.Columns.Add($column)
 }
 
-$editor = New-Object Windows.Forms.GroupBox
-$editor.Text = "  Thông tin khóa học  "
-$editor.Dock = "Top"
-$editor.Height = 610
-$editor.Padding = New-Object Windows.Forms.Padding(16)
+$editor = New-Object Windows.Forms.Panel
+$editor.Dock = "Fill"
+$editor.Padding = New-Object Windows.Forms.Padding(1)
+$editor.BackColor = $border
 $editor.ForeColor = $text
-$split.Panel2.AutoScroll = $true
 $split.Panel2.Controls.Add($editor)
 
-$newButton = New-Object Windows.Forms.Button
-$newButton.Text = "+ KHÓA MỚI"
-$newButton.Size = New-Object Drawing.Size(115, 30)
-$newButton.Location = New-Object Drawing.Point(18, 24)
-$newButton.FlatStyle = "Flat"
-$newButton.BackColor = $surface2
-$newButton.ForeColor = $text
-$newButton.FlatAppearance.BorderColor = $border
-$editor.Controls.Add($newButton)
+$editorSurface = New-Object Windows.Forms.Panel
+$editorSurface.Dock = "Fill"
+$editorSurface.Padding = New-Object Windows.Forms.Padding(0, 62, 0, 0)
+$editorSurface.BackColor = $surface
+$editor.Controls.Add($editorSurface)
+
+$editorHeader = New-Object Windows.Forms.Panel
+$editorHeader.Location = New-Object Drawing.Point(1, 1)
+$editorHeader.Size = New-Object Drawing.Size(632, 62)
+$editorHeader.Anchor = "Top, Left, Right"
+$editorHeader.BackColor = $surface
+$editor.Controls.Add($editorHeader)
+$editorHeader.BringToFront()
+
+$editorTitle = New-Object Windows.Forms.Label
+$editorTitle.Text = "THÔNG TIN KHÓA HỌC"
+$editorTitle.Font = New-Object Drawing.Font("Segoe UI Semibold", 10)
+$editorTitle.AutoSize = $true
+$editorTitle.Location = New-Object Drawing.Point(16, 9)
+$editorHeader.Controls.Add($editorTitle)
 
 $idLabel = New-Object Windows.Forms.Label
-$idLabel.Text = "Mã: sẽ tạo khi lưu"
+$idLabel.Text = "MÃ KHÓA HỌC  ·  SẼ TẠO KHI LƯU"
 $idLabel.ForeColor = $muted
-$idLabel.AutoSize = $true
-$idLabel.Location = New-Object Drawing.Point(145, 31)
-$editor.Controls.Add($idLabel)
+$idLabel.Location = New-Object Drawing.Point(17, 32)
+$idLabel.Size = New-Object Drawing.Size(320, 20)
+$idLabel.AutoEllipsis = $true
+$idLabel.Font = New-Object Drawing.Font("Segoe UI", 8)
+$editorHeader.Controls.Add($idLabel)
+
+$cancelButton = New-Object Windows.Forms.Button
+$cancelButton.Text = "HỦY"
+$cancelButton.Location = New-Object Drawing.Point(365, 13)
+$cancelButton.Size = New-Object Drawing.Size(88, 36)
+$cancelButton.Anchor = "Top, Right"
+$cancelButton.FlatStyle = "Flat"
+$cancelButton.BackColor = $surface
+$cancelButton.ForeColor = $text
+$cancelButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$cancelButton.FlatAppearance.BorderColor = $border
+$editorHeader.Controls.Add($cancelButton)
+
+$saveButton = New-Object Windows.Forms.Button
+$saveButton.Text = "THÊM KHÓA HỌC"
+$saveButton.Location = New-Object Drawing.Point(463, 13)
+$saveButton.Size = New-Object Drawing.Size(154, 36)
+$saveButton.Anchor = "Top, Right"
+$saveButton.FlatStyle = "Flat"
+$saveButton.BackColor = $accent
+$saveButton.ForeColor = $text
+$saveButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$saveButton.FlatAppearance.BorderColor = $accent
+$saveButton.FlatAppearance.MouseOverBackColor = [Drawing.Color]::FromArgb(105, 116, 245)
+$editorHeader.Controls.Add($saveButton)
+
+$editorBody = New-Object Windows.Forms.Panel
+$editorBody.Dock = "Fill"
+$editorBody.BackColor = $surface
+$editorBody.AutoScroll = $true
+$editorSurface.Controls.Add($editorBody)
 
 function Add-EditorLabel {
   param([string]$Caption, [int]$Top, [int]$Left = 18)
   $label = New-Object Windows.Forms.Label
   $label.Text = $Caption
   $label.AutoSize = $true
+$label.ForeColor = $muted
+$label.Font = New-Object Drawing.Font("Segoe UI Semibold", 8)
   $label.Location = New-Object Drawing.Point($Left, $Top)
-  $editor.Controls.Add($label)
+  $editorBody.Controls.Add($label)
 }
 
 function New-EditorTextBox {
   param([int]$Top, [int]$Height = 28, [bool]$Multiline = $false)
   $box = New-Object Windows.Forms.TextBox
   $box.Location = New-Object Drawing.Point(18, $Top)
-  $box.Size = New-Object Drawing.Size(430, $Height)
+  $box.Size = New-Object Drawing.Size(598, $Height)
   $box.Anchor = "Top, Left, Right"
-  $box.BackColor = $surface
+  $box.BackColor = $surface2
   $box.ForeColor = $text
   $box.BorderStyle = "FixedSingle"
   $box.Multiline = $Multiline
-  $editor.Controls.Add($box)
+  $editorBody.Controls.Add($box)
   $box
 }
 
-Add-EditorLabel "Tên khóa học *" 62
-$titleBox = New-EditorTextBox 82
+Add-EditorLabel "TÊN KHÓA HỌC *" 8
+$titleBox = New-EditorTextBox 25 30
 $titleBox.MaxLength = 100
 
-Add-EditorLabel "Mô tả" 114
-$descriptionBox = New-EditorTextBox 134 58 $true
+Add-EditorLabel "MÔ TẢ" 60
+$descriptionBox = New-EditorTextBox 77 54 $true
 $descriptionBox.MaxLength = 4000
 $descriptionBox.ScrollBars = "Vertical"
 
-Add-EditorLabel "URL ảnh bìa (HTTPS)" 200
-$imageUrlBox = New-EditorTextBox 220
+Add-EditorLabel "URL ẢNH BÌA (HTTPS)" 139
+$imageUrlBox = New-EditorTextBox 156 30
 $imageUrlBox.MaxLength = 2000
 
-Add-EditorLabel "Link preview khóa học (HTTPS)" 254
-$previewUrlBox = New-EditorTextBox 274
+Add-EditorLabel "LINK PREVIEW KHÓA HỌC (HTTPS)" 194
+$previewUrlBox = New-EditorTextBox 211 30
 $previewUrlBox.MaxLength = 512
 
-Add-EditorLabel "Giá bán (VNĐ)" 308
+Add-EditorLabel "GIÁ BÁN (VNĐ)" 249
 $priceBox = New-Object Windows.Forms.NumericUpDown
-$priceBox.Location = New-Object Drawing.Point(18, 328)
-$priceBox.Size = New-Object Drawing.Size(205, 28)
+$priceBox.Location = New-Object Drawing.Point(18, 266)
+$priceBox.Size = New-Object Drawing.Size(286, 30)
 $priceBox.Maximum = 2000000000
 $priceBox.DecimalPlaces = 0
 $priceBox.Increment = 10000
 $priceBox.ThousandsSeparator = $true
-$priceBox.BackColor = $surface
+$priceBox.BackColor = $surface2
 $priceBox.ForeColor = $text
-$editor.Controls.Add($priceBox)
+$editorBody.Controls.Add($priceBox)
 
-Add-EditorLabel "Thuộc gói" 308 243
+Add-EditorLabel "THUỘC GÓI" 249 318
 $planBox = New-Object Windows.Forms.ComboBox
-$planBox.Location = New-Object Drawing.Point(243, 328)
-$planBox.Size = New-Object Drawing.Size(205, 28)
+$planBox.Location = New-Object Drawing.Point(318, 266)
+$planBox.Size = New-Object Drawing.Size(298, 30)
+$planBox.Anchor = "Top, Left, Right"
 $planBox.DropDownStyle = "DropDownList"
-$planBox.BackColor = $surface
+$planBox.BackColor = $surface2
 $planBox.ForeColor = $text
 [void]$planBox.Items.AddRange(@("basic", "full"))
 $planBox.SelectedItem = "full"
-$editor.Controls.Add($planBox)
+$editorBody.Controls.Add($planBox)
 
-Add-EditorLabel "Hình thức học" 366
+Add-EditorLabel "HÌNH THỨC HỌC" 304
 $deliveryBox = New-Object Windows.Forms.ComboBox
-$deliveryBox.Location = New-Object Drawing.Point(18, 386)
-$deliveryBox.Size = New-Object Drawing.Size(430, 28)
+$deliveryBox.Location = New-Object Drawing.Point(18, 321)
+$deliveryBox.Size = New-Object Drawing.Size(598, 30)
 $deliveryBox.Anchor = "Top, Left, Right"
 $deliveryBox.DropDownStyle = "DropDownList"
-$deliveryBox.BackColor = $surface
+$deliveryBox.BackColor = $surface2
 $deliveryBox.ForeColor = $text
 [void]$deliveryBox.Items.AddRange(@(
   "NON-STREAM — chưa có cách giao nội dung",
@@ -551,10 +738,10 @@ $deliveryBox.ForeColor = $text
   "STREAM — học trực tiếp trên web"
 ))
 $deliveryBox.SelectedIndex = 0
-$editor.Controls.Add($deliveryBox)
+$editorBody.Controls.Add($deliveryBox)
 
-Add-EditorLabel "Google Drive folder ID hoặc URL thư mục" 422
-$driveFolderBox = New-EditorTextBox 442
+Add-EditorLabel "GOOGLE DRIVE FOLDER ID HOẶC URL THƯ MỤC" 359
+$driveFolderBox = New-EditorTextBox 376 30
 $driveFolderBox.MaxLength = 2000
 $driveFolderBox.Enabled = $false
 $deliveryBox.Add_SelectedIndexChanged({
@@ -564,44 +751,64 @@ $deliveryBox.Add_SelectedIndexChanged({
 $rightsBox = New-Object Windows.Forms.CheckBox
 $rightsBox.Text = "Tôi xác nhận có quyền phân phối khóa học"
 $rightsBox.AutoSize = $true
-$rightsBox.Location = New-Object Drawing.Point(18, 480)
-$editor.Controls.Add($rightsBox)
+$rightsBox.Location = New-Object Drawing.Point(18, 420)
+$rightsBox.FlatStyle = "Flat"
+$editorBody.Controls.Add($rightsBox)
 
 $publishedBox = New-Object Windows.Forms.CheckBox
 $publishedBox.Text = "Công khai khóa học trên web"
 $publishedBox.AutoSize = $true
-$publishedBox.Location = New-Object Drawing.Point(18, 505)
-$editor.Controls.Add($publishedBox)
+$publishedBox.Location = New-Object Drawing.Point(18, 444)
+$publishedBox.FlatStyle = "Flat"
+$editorBody.Controls.Add($publishedBox)
 
 $saleBox = New-Object Windows.Forms.CheckBox
 $saleBox.Text = "Mở thanh toán (cần DRIVE hợp lệ hoặc STREAM có bài)"
 $saleBox.AutoSize = $true
-$saleBox.Location = New-Object Drawing.Point(18, 530)
-$editor.Controls.Add($saleBox)
-
-$saveButton = New-Object Windows.Forms.Button
-$saveButton.Text = "THÊM KHÓA HỌC"
-$saveButton.Location = New-Object Drawing.Point(18, 564)
-$saveButton.Size = New-Object Drawing.Size(205, 40)
-$saveButton.FlatStyle = "Flat"
-$saveButton.BackColor = $accent
-$saveButton.ForeColor = $bg
-$saveButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 10)
-$saveButton.FlatAppearance.BorderColor = $accent
-$editor.Controls.Add($saveButton)
-
-$saveNote = New-Object Windows.Forms.Label
-$saveNote.Text = "Lưu xong tự đồng bộ Discord."
-$saveNote.ForeColor = $muted
-$saveNote.AutoSize = $true
-$saveNote.Location = New-Object Drawing.Point(238, 576)
-$editor.Controls.Add($saveNote)
+$saleBox.Location = New-Object Drawing.Point(18, 468)
+$saleBox.FlatStyle = "Flat"
+$editorBody.Controls.Add($saleBox)
 
 function Write-Log {
   param([string]$Message)
   $outputBox.AppendText(("[{0}] {1}{2}" -f (Get-Date -Format "HH:mm:ss"), $Message, [Environment]::NewLine))
   $outputBox.SelectionStart = $outputBox.TextLength
   $outputBox.ScrollToCaret()
+}
+
+function Invoke-DiscordCourseDelete {
+  param([string]$CourseId)
+
+  if ($CourseId -cnotmatch "^[a-z0-9][a-z0-9_-]{0,79}$") { throw "Mã khóa học cần xóa không hợp lệ." }
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = "--env-file-if-exists=.env scripts/sync-discord-courses.js --delete-course $CourseId"
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+
+  $process = New-Object Diagnostics.Process
+  try {
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy tiến trình xóa bài Discord." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.Result.Trim()
+    $stderr = $stderrTask.Result.Trim()
+    $exitCode = $process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
+  if ($exitCode -ne 0) {
+    if ($stderr) { throw $stderr }
+    throw "Discord không thể xóa bài đăng (mã $exitCode)."
+  }
+  $stdout
 }
 
 function Clear-Editor {
@@ -617,8 +824,9 @@ function Clear-Editor {
   $rightsBox.Checked = $false
   $publishedBox.Checked = $false
   $saleBox.Checked = $false
-  $idLabel.Text = "Mã: sẽ tạo khi lưu"
+  $idLabel.Text = "MÃ KHÓA HỌC  ·  SẼ TẠO KHI LƯU"
   $saveButton.Text = "THÊM KHÓA HỌC"
+  $deleteButton.Enabled = $false
   $courseGrid.ClearSelection()
   [void]$titleBox.Focus()
 }
@@ -688,11 +896,98 @@ function Load-CourseIntoEditor {
   $rightsBox.Checked = $course.rightsVerified -eq $true
   $publishedBox.Checked = $course.published -eq $true
   $saleBox.Checked = $course.saleEnabled -eq $true
-  $idLabel.Text = "Mã: $($script:EditingCourseId) (không đổi)"
+  $idLabel.Text = "MÃ KHÓA HỌC  ·  $($script:EditingCourseId)"
   $saveButton.Text = "LƯU THAY ĐỔI"
+  $deleteButton.Enabled = $true
 }
 
 $newButton.Add_Click({ Clear-Editor })
+$cancelButton.Add_Click({ Clear-Editor })
+$deleteButton.Add_Click({
+  if ($script:SyncRunning -or -not $script:EditingCourseId) { return }
+  $courseId = $script:EditingCourseId
+  $course = @($script:Catalog.courses) | Where-Object { [string]$_.id -ceq $courseId } | Select-Object -First 1
+  if ($null -eq $course) {
+    Refresh-CourseList
+    Clear-Editor
+    return
+  }
+
+  $confirmation = [Windows.Forms.MessageBox]::Show(
+    "Xóa vĩnh viễn khóa '$([string]$course.title)'?`r`nMã: $courseId`r`n`r`n- Gỡ khóa khỏi catalog trên web.`r`n- Xóa đúng bài forum Discord do bot tạo.`r`n- Người học mất quyền mở khóa STREAM ngay khi catalog được lưu.`r`n`r`nKHÔNG xóa file HLS, lịch sử đơn hàng, quyền đã cấp hoặc quyền truy cập thư mục Drive.",
+    "Xác nhận xóa khóa học",
+    "YesNo",
+    "Warning"
+  )
+  if ($confirmation -ne [Windows.Forms.DialogResult]::Yes) { return }
+
+  $remoteDone = $false
+  try {
+    $current = Get-CatalogSnapshot
+    $currentDelivery = Get-DeliverySnapshot
+    if ($current.Fingerprint -ne $script:CatalogFingerprint -or $currentDelivery.Fingerprint -ne $script:DeliveryFingerprint) {
+      Refresh-CourseList
+      Clear-Editor
+      [Windows.Forms.MessageBox]::Show("Catalog hoặc cấu hình Drive vừa được thay đổi ở nơi khác. Danh sách đã tải lại; chưa xóa nội dung nào.", "Dữ liệu đã thay đổi", "OK", "Warning") | Out-Null
+      return
+    }
+    $preflightMatches = @($current.Catalog.courses | Where-Object { [string]$_.id -ceq $courseId })
+    if ($preflightMatches.Count -eq 0) { throw "Không còn tìm thấy khóa học mã $courseId." }
+    if ($preflightMatches.Count -ne 1) { throw "Catalog có nhiều khóa trùng mã $courseId; chưa xóa nội dung nào." }
+
+    $form.UseWaitCursor = $true
+    $syncButton.Enabled = $false
+    $listToolbar.Enabled = $false
+    $courseGrid.Enabled = $false
+    $editor.Enabled = $false
+    $statusLabel.Text = "Đang xóa khóa học và bài Discord..."
+    $statusLabel.ForeColor = $danger
+    Write-Log "Đang xóa '$([string]$course.title)' ($courseId) khỏi Discord và catalog."
+
+    $discordOutput = Invoke-DiscordCourseDelete $courseId
+    $remoteDone = $true
+
+    $afterDiscord = Get-CatalogSnapshot
+    $afterDiscordDelivery = Get-DeliverySnapshot
+    if ($afterDiscord.Fingerprint -ne $current.Fingerprint -or $afterDiscordDelivery.Fingerprint -ne $currentDelivery.Fingerprint) {
+      throw "Bài Discord đã được xử lý nhưng catalog thay đổi ở nơi khác nên app không ghi đè. Hãy đồng bộ lại để tạo lại bài nếu cần."
+    }
+
+    $removedCourse = Remove-CourseData $afterDiscord.Catalog $afterDiscordDelivery.Delivery $courseId
+    foreach ($catalogCourse in @($afterDiscord.Catalog.courses)) {
+      if ($null -ne $catalogCourse.PSObject.Properties["driveFolderId"]) {
+        $catalogCourse.PSObject.Properties.Remove("driveFolderId")
+      }
+    }
+    Save-CatalogAtomically $afterDiscord.Catalog
+    Save-CatalogAtomically $afterDiscordDelivery.Delivery $script:DeliveryPath
+
+    Refresh-CourseList
+    Clear-Editor
+    if ($discordOutput) { Write-Log $discordOutput }
+    $statusLabel.Text = "Đã xóa khóa học và bài Discord."
+    $statusLabel.ForeColor = $success
+    Write-Log "Đã xóa '$([string]$removedCourse.title)' ($courseId). HLS, đơn hàng và quyền đã cấp được giữ nguyên."
+  } catch {
+    try {
+      Refresh-CourseList $courseId
+      $refreshedCourse = @($script:Catalog.courses) | Where-Object { [string]$_.id -ceq $courseId } | Select-Object -First 1
+      if ($null -eq $refreshedCourse) { Clear-Editor } else { Load-CourseIntoEditor $courseId }
+    } catch {}
+    $errorTitle = if ($remoteDone) { "Discord đã xử lý, catalog chưa xóa xong" } else { "Không thể xóa khóa học" }
+    [Windows.Forms.MessageBox]::Show($_.Exception.Message, $errorTitle, "OK", "Error") | Out-Null
+    $statusLabel.Text = "Xóa chưa hoàn tất."
+    $statusLabel.ForeColor = $danger
+    Write-Log "LỖI XÓA: $($_.Exception.Message)"
+  } finally {
+    $form.UseWaitCursor = $false
+    $syncButton.Enabled = $true
+    $listToolbar.Enabled = $true
+    $courseGrid.Enabled = $true
+    $editor.Enabled = $true
+    $deleteButton.Enabled = [bool]$script:EditingCourseId
+  }
+})
 $courseGrid.Add_SelectionChanged({
   if ($courseGrid.SelectedRows.Count -eq 1) {
     Load-CourseIntoEditor ([string]$courseGrid.SelectedRows[0].Tag)
@@ -807,8 +1102,10 @@ $syncTimer.Add_Tick({
   $script:SyncStderrTask = $null
   $script:SyncRunning = $false
   $syncButton.Enabled = $true
+  $listToolbar.Enabled = $true
   $courseGrid.Enabled = $true
   $editor.Enabled = $true
+  $deleteButton.Enabled = [bool]$script:EditingCourseId
   if ($stdout) { Write-Log $stdout }
   if ($stderr) { Write-Log "LỖI: $stderr" }
   if ($exitCode -eq 0) {
@@ -839,6 +1136,7 @@ $syncButton.Add_Click({
   try {
     $script:SyncRunning = $true
     $syncButton.Enabled = $false
+    $listToolbar.Enabled = $false
     $courseGrid.Enabled = $false
     $editor.Enabled = $false
     $statusLabel.Text = "Đang đồng bộ Discord..."
@@ -868,8 +1166,10 @@ $syncButton.Add_Click({
     $script:SyncStderrTask = $null
     $script:SyncRunning = $false
     $syncButton.Enabled = $true
+    $listToolbar.Enabled = $true
     $courseGrid.Enabled = $true
     $editor.Enabled = $true
+    $deleteButton.Enabled = [bool]$script:EditingCourseId
     $statusLabel.Text = "Đã lưu, chưa đăng — không chạy được đồng bộ."
     $statusLabel.ForeColor = $muted
     Write-Log "LỖI ĐỒNG BỘ: $($_.Exception.Message). Catalog đã lưu, chưa đăng lên Discord."
@@ -891,15 +1191,19 @@ try {
   if ($LayoutTest) {
     $form.Show()
     [Windows.Forms.Application]::DoEvents()
+    if ($form.ClientSize.Width -ne 1280 -or $form.ClientSize.Height -ne 820) { throw "Kích thước mặc định phải là 1280x820." }
     if ($split.Top -lt $header.Bottom -or $split.Bottom -gt $outputGroup.Top) { throw "Khu vực nội dung chồng lên header hoặc nhật ký." }
-    if ($outputBox.Top -lt $syncBar.Bottom) { throw "Nhật ký chồng lên thanh đồng bộ." }
-    if ($split.Panel2.ClientSize.Width -lt 480) { throw "Khung nhập khóa học quá hẹp: $($split.Panel2.ClientSize.Width)px." }
-    $priceLabel = $editor.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "Giá bán (VNĐ)" } | Select-Object -First 1
-    $planLabel = $editor.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "Thuộc gói" } | Select-Object -First 1
+    if ($outputGroup.Height -ne 150 -or $outputBox.Top -lt 31) { throw "Khung nhật ký không đúng chiều cao hoặc chồng tiêu đề." }
+    if ($split.Panel2.ClientSize.Width -lt 500) { throw "Khung nhập khóa học quá hẹp: $($split.Panel2.ClientSize.Width)px." }
+    $priceLabel = $editorBody.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "GIÁ BÁN (VNĐ)" } | Select-Object -First 1
+    $planLabel = $editorBody.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "THUỘC GÓI" } | Select-Object -First 1
     if ($priceLabel.Bounds.IntersectsWith($planLabel.Bounds)) { throw "Nhãn Giá bán và Thuộc gói đang chồng nhau." }
     if ($deliveryBox.Items.Count -ne 3) { throw "Danh sách hình thức học phải có NON-STREAM, DRIVE và STREAM." }
     if ($driveFolderBox.Top -lt $deliveryBox.Bottom) { throw "Ô thư mục Drive đang chồng lên danh sách hình thức học." }
-    if ($saveButton.Bottom -gt $editor.ClientSize.Height) { throw "Nút lưu nằm ngoài khung nhập khóa học." }
+    if ($courseGrid.RowTemplate.Height -ne 40) { throw "Hàng catalog phải cao 40px." }
+    if ($saveButton.Bottom -gt $editorHeader.ClientSize.Height -or $cancelButton.Bottom -gt $editorHeader.ClientSize.Height) { throw "Nút lưu hoặc hủy nằm ngoài header trình sửa." }
+    if ($deleteButton.Parent -ne $listToolbar -or $newButton.Bounds.IntersectsWith($deleteButton.Bounds)) { throw "Nút tạo mới và xóa bài đăng sai vị trí hoặc đang chồng nhau." }
+    if ($deleteButton.Enabled) { throw "Nút xóa phải tắt khi chưa chọn khóa học." }
     Write-Host ("LAYOUT-TEST OK form={0}x{1} content={2} editor={3}px log={4}" -f $form.ClientSize.Width, $form.ClientSize.Height, $split.Bounds, $split.Panel2.ClientSize.Width, $outputGroup.Bounds)
     $form.Close()
   } else {

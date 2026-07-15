@@ -1,9 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { ChannelType, Routes } = require("discord.js");
 const {
   buildForumPost,
   buildHiddenForumMessage,
   courseIdFromMessage,
+  deleteForumCoursePost,
   deliveryTagName,
   ensureDeliveryTags,
   existingThreadNames,
@@ -168,6 +170,48 @@ test("forum upsert indexes only starter posts authored by this bot", async () =>
   ], "forum", "bot");
   assert.equal(index.get("blender").id, "owned");
   assert.equal(index.has("forged"), false);
+});
+
+test("targeted delete removes only the bot-owned course thread", async () => {
+  const deleted = [];
+  const rest = {
+    get: async route => {
+      if (route === Routes.channel("forum")) return { id: "forum", type: ChannelType.GuildForum, guild_id: "guild" };
+      if (route === "/users/@me") return { id: "bot" };
+      if (route === Routes.guildActiveThreads("guild")) {
+        return { threads: [{ id: "owned", name: "Blender", parent_id: "forum" }] };
+      }
+      if (route === Routes.channelThreads("forum", "public")) return { threads: [], has_more: false };
+      if (route === Routes.channelMessage("owned", "owned")) {
+        return { author: { id: "bot" }, embeds: [{ footer: { text: "Mã khóa học: blender" } }] };
+      }
+      throw new Error(`Unexpected route: ${route}`);
+    },
+    delete: async route => deleted.push(route),
+  };
+
+  assert.equal(await deleteForumCoursePost("blender", "forum", "token", rest), true);
+  assert.deepEqual(deleted, [Routes.channel("owned")]);
+});
+
+test("targeted delete fails closed when no bot-owned post matches", async () => {
+  const deleted = [];
+  const rest = {
+    get: async route => {
+      if (route === Routes.channel("forum")) return { id: "forum", type: ChannelType.GuildForum, guild_id: "guild" };
+      if (route === "/users/@me") return { id: "bot" };
+      if (route === Routes.guildActiveThreads("guild")) return { threads: [] };
+      if (route === Routes.channelThreads("forum", "public")) return { threads: [], has_more: false };
+      throw new Error(`Unexpected route: ${route}`);
+    },
+    delete: async route => deleted.push(route),
+  };
+
+  await assert.rejects(
+    deleteForumCoursePost("missing", "forum", "token", rest),
+    /chưa xóa catalog/,
+  );
+  assert.deepEqual(deleted, []);
 });
 
 test("removed forum courses are archived with payment disabled", () => {
