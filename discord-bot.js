@@ -1,5 +1,7 @@
 const {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Client,
   EmbedBuilder,
   Events,
@@ -21,11 +23,13 @@ const {
   findLesson,
   findSaleCourse,
   getCatalog,
+  getPendingDiscordPaymentNotifications,
   googleEmail,
   hasCourseAccess,
   isCourseContentReady,
   isCourseSaleReady,
-  isForumCourseSaleReady
+  isForumCourseSaleReady,
+  markDiscordPaymentNotified
 } = require("./learning");
 
 let client;
@@ -72,6 +76,51 @@ function appUrl(courseId, lessonId) {
   const base = publicBaseUrl();
   const query = new URLSearchParams({ course: courseId, lesson: lessonId });
   return `${base}/learn?${query}`;
+}
+
+function paymentApprovedMessage(order, catalog = getCatalog()) {
+  const courses = (catalog.courses || []).filter(isCourseContentReady);
+  if (order.access_scope === "course") {
+    const course = courses.find(item => item.id === order.course_id);
+    const lessons = (course?.lessons || []).filter(lesson => lesson.published);
+    if (!course || !lessons.length) return null;
+    const components = lessons.length <= 25
+      ? [row(`learn_lesson:${course.id}`, "Chọn bài học", lessons.map(lesson => option(lesson.title, lesson.id)))]
+      : [new ActionRowBuilder().addComponents(new ButtonBuilder()
+        .setLabel("Mở khóa học và chọn bài")
+        .setStyle(ButtonStyle.Link)
+        .setURL(appUrl(course.id, lessons[0].id)))];
+    return {
+      content: `✅ **Thanh toán thành công**\nBạn đã được mở khóa **${escapeDiscordMarkdown(course.title)}**. Chọn bài học để bắt đầu:`,
+      components
+    };
+  }
+  const available = courses.filter(course => order.access_scope === "full" || course.planTier === "basic");
+  return {
+    content: `✅ **Thanh toán thành công**\nGói **${escapeDiscordMarkdown(order.course_title)}** đã được kích hoạt. Chọn khóa học:`,
+    components: available.length
+      ? [row("learn_course", "Chọn khóa học", available.map(course => option(course.title, course.id, course.description)))]
+      : []
+  };
+}
+
+async function notifyPaymentApproved(order) {
+  if (!client?.isReady()) throw new Error("Discord bot is not ready");
+  const message = paymentApprovedMessage(order);
+  if (!message) throw new Error(`Course is unavailable after payment: ${order.course_id}`);
+  const user = await client.users.fetch(String(order.discord_id));
+  await user.send(message);
+}
+
+async function notifyPendingPayments() {
+  for (const order of await getPendingDiscordPaymentNotifications()) {
+    try {
+      await notifyPaymentApproved(order);
+      await markDiscordPaymentNotified(order.id);
+    } catch (error) {
+      console.error(`Could not notify paid Discord order ${order.id}`, error);
+    }
+  }
 }
 
 async function registerCommands(applicationId) {
@@ -270,9 +319,10 @@ async function startDiscordBot() {
     registerCommands(readyClient.user.id)
       .then(() => console.log(`Discord bot ready as ${readyClient.user.tag}`))
       .catch(error => console.error("Could not register Discord commands", error));
+    notifyPendingPayments().catch(error => console.error("Could not recover Discord payment notifications", error));
   });
   await client.login(process.env.DISCORD_BOT_TOKEN);
   return client;
 }
 
-module.exports = { driveEmailModal, isDiscordBotReady, startDiscordBot };
+module.exports = { driveEmailModal, isDiscordBotReady, notifyPaymentApproved, paymentApprovedMessage, startDiscordBot };

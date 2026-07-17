@@ -8,8 +8,8 @@ process.env.HLS_SIGNING_SECRET = "test-secret-that-is-longer-than-thirty-two-cha
 
 const {
   canAccessCourse, cleanId, courseDeliveryMode, driveFolderId, effectiveDeliveryMode, escapeDiscordMarkdown, getCatalog, googleEmail, grantEmailAccess, listEmailAccess,
-  getCourseViewStats, getLearningProgress, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
-  isForumCourseSaleReady, normalizeLearningProgress, publicCatalog, recordLessonView, revokeEmailAccess, saveLearningProgress
+  getCourseViewStats, getLearningProgress, getPendingDiscordPaymentNotifications, hasCourseAccess, hasPublishedLesson, isCourseContentReady, isCourseListed, isCourseSaleReady, isDriveCourseReady,
+  isForumCourseSaleReady, markDiscordPaymentNotified, normalizeLearningProgress, publicCatalog, recordLessonView, revokeEmailAccess, saveLearningProgress
 } = require("../learning");
 const { issueMediaToken, verifyMediaToken } = require("../netlify/functions/lib/media-token");
 
@@ -404,6 +404,26 @@ test("approved Google email grants can be listed and revoked", async () => {
   });
   await assert.rejects(revokeEmailAccess("not-a-uuid", async () => []), /không hợp lệ/);
   await assert.rejects(revokeEmailAccess(id, async () => []), /đã được thu hồi/);
+});
+
+test("recent approved Discord payments are queued once for notification", async () => {
+  const id = "9b9f2602-e8db-4b6b-8d8f-58ef3cffebd9";
+  const queued = [{ id, course_id: "course-a", discord_id: "123456789012345678", access_scope: "course" }];
+  const reads = await getPendingDiscordPaymentNotifications(async strings => {
+    assert.match(strings.join(" ? "), /discord_notified_at IS NULL/);
+    assert.match(strings.join(" ? "), /INTERVAL '24 hours'/);
+    return queued;
+  });
+  assert.deepEqual(reads, queued);
+  let marked = false;
+  await markDiscordPaymentNotified(id, async (strings, ...values) => {
+    marked = true;
+    assert.match(strings.join(" ? "), /discord_notified_at = NOW/);
+    assert.equal(values[0], id);
+    return [];
+  });
+  assert.equal(marked, true);
+  await assert.rejects(markDiscordPaymentNotified("bad-id", async () => []), /Invalid Discord/);
 });
 
 test("Google email access grants only individual stream courses to verified identities", async t => {

@@ -264,6 +264,7 @@ async function ensureLearningTables() {
     await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMPTZ`;
     await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
     await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS order_origin VARCHAR(20) NOT NULL DEFAULT 'web'`;
+    await sql`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS discord_notified_at TIMESTAMPTZ`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_discord_access_idx ON purchase_orders (discord_id, status, access_scope, access_expires_at)`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_user_access_idx ON purchase_orders (auth_user_id, status, access_scope, access_expires_at)`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_verified_email_idx ON purchase_orders (LOWER(email)) WHERE delivery_type = 'hls' AND status = 'approved'`;
@@ -442,6 +443,31 @@ async function getEntitlements(discordId) {
       WHERE discord_id = ${String(discordId)}
     ) entitlements
     ORDER BY updated_at DESC
+  `;
+}
+
+async function getPendingDiscordPaymentNotifications(sqlOverride) {
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  return sql`
+    SELECT id, course_id, course_title, discord_id, access_scope
+    FROM purchase_orders
+    WHERE delivery_type = 'hls' AND status = 'approved' AND order_origin = 'discord'
+      AND discord_notified_at IS NULL AND paid_at >= NOW() - INTERVAL '24 hours'
+    ORDER BY paid_at ASC
+    LIMIT 50
+  `;
+}
+
+async function markDiscordPaymentNotified(orderId, sqlOverride) {
+  const id = String(orderId || "");
+  if (!validUserId(id)) throw new Error("Invalid Discord payment notification order");
+  if (!sqlOverride) await ensureLearningTables();
+  const sql = sqlOverride || db();
+  await sql`
+    UPDATE purchase_orders SET discord_notified_at = NOW()
+    WHERE id = ${id}::uuid AND delivery_type = 'hls' AND status = 'approved'
+      AND order_origin = 'discord' AND discord_notified_at IS NULL
   `;
 }
 
@@ -1074,10 +1100,12 @@ module.exports = {
   getCourseViewStats,
   getEntitlements,
   getLearningProgress,
+  getPendingDiscordPaymentNotifications,
   getUserEntitlements,
   googleEmail,
   grantEmailAccess,
   listEmailAccess,
+  markDiscordPaymentNotified,
   revokeEmailAccess,
   hasPublishedLesson,
   hasCourseAccess,

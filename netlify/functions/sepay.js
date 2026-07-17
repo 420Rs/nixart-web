@@ -1,6 +1,7 @@
 const { neon } = require("@neondatabase/serverless");
 const { google } = require("googleapis");
 const { approveHlsOrder, ensureLearningTables, escapeDiscordMarkdown } = require("../../learning");
+const { notifyPaymentApproved } = require("../../discord-bot");
 
 let sqlClient;
 function db() {
@@ -107,7 +108,7 @@ async function claimOrder(sql, purchaseCode, amount, reference) {
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
       AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive') OR created_at > NOW() - INTERVAL '30 minutes')
-    RETURNING id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
+    RETURNING id, course_id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
 }
@@ -161,6 +162,9 @@ exports.handler = async (event) => {
       }
       await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`
         .catch(error => console.error("sepay transaction log error", error));
+      await notifyPaymentApproved(order)
+        .then(() => sql`UPDATE purchase_orders SET discord_notified_at = NOW() WHERE id = ${order.id}`)
+        .catch(error => console.error("sepay buyer notification error", error));
       return json(200, { success: true, status: "approved" });
     }
 
