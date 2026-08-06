@@ -8,6 +8,7 @@ const {
   GatewayIntentBits,
   MessageFlags,
   ModalBuilder,
+  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -31,6 +32,15 @@ const {
   isForumCourseSaleReady,
   markDiscordPaymentNotified
 } = require("./learning");
+const {
+  DEFAULT_GROUPBUY_CHANNEL_ID,
+  attachGroupBuyMessage,
+  createGroupBuyCampaign,
+  createGroupBuyPurchase,
+  getGroupBuyCampaign,
+  getPendingGroupBuyNotifications,
+  markGroupBuyNotified
+} = require("./groupbuy");
 
 let client;
 
@@ -104,6 +114,67 @@ function paymentApprovedMessage(order, catalog = getCatalog()) {
   };
 }
 
+function groupBuyMessage(campaign) {
+  const paid = Math.min(campaign.targetSlots, campaign.paidSlots);
+  const pending = Math.max(0, campaign.reservedSlots - paid);
+  const closed = campaign.status !== "open";
+  const exclusiveLocked = campaign.exclusiveReserved || campaign.exclusivePaid || campaign.reservedSlots > 0;
+  const status = campaign.status === "exclusive" ? "Đã có người mua độc quyền"
+    : campaign.status === "funded" ? "Đã đủ người góp"
+      : campaign.exclusiveReserved ? "Đang chờ thanh toán độc quyền"
+        : "Đang mở GroupBuy";
+  const progress = `${"🟩".repeat(Math.min(paid, 10))}${"⬜".repeat(Math.max(0, Math.min(campaign.targetSlots, 10) - paid))}`;
+  const embed = new EmbedBuilder()
+    .setColor(closed ? 0x4ddb8e : 0x5865f2)
+    .setTitle(campaign.title)
+    .setDescription(campaign.description || "Cùng góp để sở hữu khóa học với chi phí thấp hơn.")
+    .addFields(
+      { name: "Trạng thái", value: status, inline: true },
+      { name: "Giá đầy đủ", value: `${campaign.totalPrice.toLocaleString("vi-VN")}đ`, inline: true },
+      { name: "Mỗi suất góp", value: `${campaign.sharePrice.toLocaleString("vi-VN")}đ`, inline: true },
+      { name: "Tiến độ", value: `**${paid}/${campaign.targetSlots}**${pending ? ` · ${pending} đang chờ thanh toán` : ""}\n${progress}`, inline: false }
+    )
+    .setFooter({ text: `Mã GroupBuy: ${campaign.id} · Mỗi tài khoản chỉ góp 1 suất` });
+  if (campaign.imageUrl) embed.setImage(campaign.imageUrl);
+  const buttons = [
+    new ButtonBuilder()
+      .setCustomId(`groupbuy_share:${campaign.id}`)
+      .setLabel(`Góp ${campaign.sharePrice.toLocaleString("vi-VN")}đ`)
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(closed || campaign.exclusiveReserved || campaign.reservedSlots >= campaign.targetSlots),
+    new ButtonBuilder()
+      .setCustomId(`groupbuy_exclusive:${campaign.id}`)
+      .setLabel(`Mua độc quyền ${campaign.totalPrice.toLocaleString("vi-VN")}đ`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(closed || exclusiveLocked)
+  ];
+  if (campaign.previewUrl) buttons.push(new ButtonBuilder().setLabel("Xem trước").setStyle(ButtonStyle.Link).setURL(campaign.previewUrl));
+  return { embeds: [embed], components: [new ActionRowBuilder().addComponents(...buttons)] };
+}
+
+async function refreshGroupBuyMessage(campaignId) {
+  if (!client?.isReady()) throw new Error("Discord bot is not ready");
+  const campaign = await getGroupBuyCampaign(campaignId);
+  if (!campaign?.messageId) return campaign;
+  const channel = await client.channels.fetch(campaign.channelId);
+  const message = await channel.messages.fetch(campaign.messageId);
+  await message.edit(groupBuyMessage(campaign));
+  return campaign;
+}
+
+async function notifyGroupBuyApproved(order) {
+  if (!client?.isReady()) throw new Error("Discord bot is not ready");
+  const campaign = await refreshGroupBuyMessage(order.course_id);
+  if (!campaign) throw new Error(`GroupBuy không tồn tại: ${order.course_id}`);
+  const exclusive = order.access_scope === "groupbuy_exclusive";
+  const user = await client.users.fetch(String(order.discord_id));
+  await user.send({
+    content: exclusive
+      ? `✅ **Thanh toán độc quyền thành công**\nBạn đã mua toàn bộ **${escapeDiscordMarkdown(campaign.title)}**. Admin sẽ liên hệ để bàn giao.`
+      : `✅ **Góp GroupBuy thành công**\nBạn đã được ghi nhận 1 suất trong **${escapeDiscordMarkdown(campaign.title)}** (${campaign.paidSlots}/${campaign.targetSlots}). Bot sẽ thông báo khi đủ người và khóa học sẵn sàng.`
+  });
+}
+
 async function notifyPaymentApproved(order) {
   if (!client?.isReady()) throw new Error("Discord bot is not ready");
   const message = paymentApprovedMessage(order);
@@ -123,10 +194,31 @@ async function notifyPendingPayments() {
   }
 }
 
+async function notifyPendingGroupBuyPayments() {
+  for (const order of await getPendingGroupBuyNotifications()) {
+    try {
+      await notifyGroupBuyApproved(order);
+      await markGroupBuyNotified(order.id);
+    } catch (error) {
+      console.error(`Could not notify paid GroupBuy order ${order.id}`, error);
+    }
+  }
+}
+
 async function registerCommands(applicationId) {
   const commands = [
     new SlashCommandBuilder().setName("hoc").setDescription("Chọn khóa học và bài học để xem trên web"),
-    new SlashCommandBuilder().setName("mua").setDescription("Mua lẻ khóa học hoặc đăng ký gói tháng")
+    new SlashCommandBuilder().setName("mua").setDescription("Mua lẻ khóa học hoặc đăng ký gói tháng"),
+    new SlashCommandBuilder()
+      .setName("groupbuy-tao")
+      .setDescription("Tạo một khóa GroupBuy mới")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      .addStringOption(option => option.setName("tieu-de").setDescription("Tên khóa học").setRequired(true).setMaxLength(100))
+      .addStringOption(option => option.setName("mo-ta").setDescription("Mô tả ngắn").setMaxLength(1000))
+      .addIntegerOption(option => option.setName("gia").setDescription("Giá đầy đủ, mặc định 400000").setMinValue(10000).setMaxValue(2000000000))
+      .addIntegerOption(option => option.setName("so-nguoi").setDescription("Số người góp, mặc định 10").setMinValue(2).setMaxValue(100))
+      .addStringOption(option => option.setName("anh").setDescription("Link ảnh HTTPS").setMaxLength(2000))
+      .addStringOption(option => option.setName("xem-truoc").setDescription("Link preview HTTPS").setMaxLength(2000))
   ].map(command => command.toJSON());
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN);
   const guildId = String(process.env.DISCORD_GUILD_ID || "");
@@ -233,6 +325,10 @@ async function createPaymentReply(interaction, scope, id, update, email = "") {
     value: id,
     email
   });
+  return renderPaymentReply(interaction, order);
+}
+
+async function renderPaymentReply(interaction, order) {
   const bankReady = order.bank.bin && order.bank.account;
   const fields = [
     { name: "Số tiền", value: `${Number(order.amount).toLocaleString("vi-VN")}đ`, inline: true },
@@ -248,12 +344,51 @@ async function createPaymentReply(interaction, scope, id, update, email = "") {
     .setFooter({
       text: order.deliveryType === "drive"
         ? "Chuyển đúng nội dung. SePay xác nhận xong, email trên sẽ được thêm vào thư mục Drive."
+        : order.deliveryType === "groupbuy"
+          ? "Suất được giữ 30 phút. Chuyển đúng số tiền và nội dung; SePay xác nhận xong bot sẽ tự cập nhật tiến độ."
         : order.scope !== "course"
           ? "Gói tháng áp dụng cho STREAM; khóa DRIVE bán lẻ. Bot mở quyền khi SePay xác nhận."
           : "Chuyển đúng số tiền và nội dung. Bot sẽ mở quyền khi SePay xác nhận."
     });
   if (order.qrUrl) embed.setImage(order.qrUrl);
   return interaction.editReply({ content: "", embeds: [embed], components: [] });
+}
+
+async function createGroupBuyCommand(interaction) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    return interaction.reply({ content: "Bạn không có quyền tạo GroupBuy.", flags: MessageFlags.Ephemeral });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const channelId = String(process.env.DISCORD_GROUPBUY_CHANNEL_ID || DEFAULT_GROUPBUY_CHANNEL_ID);
+  const campaign = await createGroupBuyCampaign({
+    title: interaction.options.getString("tieu-de", true),
+    description: interaction.options.getString("mo-ta") || "",
+    totalPrice: interaction.options.getInteger("gia") || 400000,
+    targetSlots: interaction.options.getInteger("so-nguoi") || 10,
+    imageUrl: interaction.options.getString("anh") || "",
+    previewUrl: interaction.options.getString("xem-truoc") || "",
+    channelId,
+    createdBy: interaction.user.id
+  });
+  const channel = await client.channels.fetch(channelId);
+  if (!channel?.isTextBased()) throw new Error("Kênh GroupBuy không phải kênh text");
+  const message = await channel.send(groupBuyMessage(campaign));
+  await attachGroupBuyMessage(campaign.id, message.id);
+  return interaction.editReply({ content: `Đã đăng **${escapeDiscordMarkdown(campaign.title)}**: https://discord.com/channels/${interaction.guildId}/${channelId}/${message.id}` });
+}
+
+async function groupBuyButton(interaction) {
+  const [prefix, id] = interaction.customId.split(":", 2);
+  const kind = prefix === "groupbuy_exclusive" ? "exclusive" : "share";
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const order = await createGroupBuyPurchase({
+    campaignId: id,
+    kind,
+    discordId: interaction.user.id,
+    displayName: interaction.user.globalName || interaction.user.username
+  });
+  await refreshGroupBuyMessage(id);
+  return renderPaymentReply(interaction, order);
 }
 
 async function buyProduct(interaction) {
@@ -290,6 +425,7 @@ async function handleInteraction(interaction) {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "hoc") return showCourses(interaction);
       if (interaction.commandName === "mua") return showProducts(interaction);
+      if (interaction.commandName === "groupbuy-tao") return createGroupBuyCommand(interaction);
     }
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "learn_course") return chooseCourse(interaction);
@@ -299,6 +435,8 @@ async function handleInteraction(interaction) {
     if (interaction.isModalSubmit() && interaction.customId.startsWith("drive_email:")) return driveEmailSubmit(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("free_course:")) return freeCourseButton(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("buy_course:")) return buyCourseButton(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("groupbuy_share:")) return groupBuyButton(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("groupbuy_exclusive:")) return groupBuyButton(interaction);
   } catch (error) {
     console.error("Discord interaction error", error);
     const message = { content: "Không xử lý được yêu cầu lúc này. Vui lòng thử lại.", components: [] };
@@ -320,9 +458,19 @@ async function startDiscordBot() {
       .then(() => console.log(`Discord bot ready as ${readyClient.user.tag}`))
       .catch(error => console.error("Could not register Discord commands", error));
     notifyPendingPayments().catch(error => console.error("Could not recover Discord payment notifications", error));
+    notifyPendingGroupBuyPayments().catch(error => console.error("Could not recover GroupBuy notifications", error));
   });
   await client.login(process.env.DISCORD_BOT_TOKEN);
   return client;
 }
 
-module.exports = { driveEmailModal, isDiscordBotReady, notifyPaymentApproved, paymentApprovedMessage, startDiscordBot };
+module.exports = {
+  driveEmailModal,
+  groupBuyMessage,
+  isDiscordBotReady,
+  notifyGroupBuyApproved,
+  notifyPaymentApproved,
+  paymentApprovedMessage,
+  refreshGroupBuyMessage,
+  startDiscordBot
+};

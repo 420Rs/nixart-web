@@ -1,7 +1,8 @@
 const { neon } = require("@neondatabase/serverless");
 const { google } = require("googleapis");
 const { approveHlsOrder, ensureLearningTables, escapeDiscordMarkdown } = require("../../learning");
-const { notifyPaymentApproved } = require("../../discord-bot");
+const { approveGroupBuyOrder, ensureGroupBuyTables, expireGroupBuyReservations } = require("../../groupbuy");
+const { notifyGroupBuyApproved, notifyPaymentApproved } = require("../../discord-bot");
 
 let sqlClient;
 function db() {
@@ -87,7 +88,7 @@ async function notifyDiscord(order, purchaseCode, amount) {
           { name: "Sản phẩm", value: escapeDiscordMarkdown(order.course_title).slice(0, 1024) },
           { name: "Số tiền", value: `${Number(amount).toLocaleString("vi-VN")} đ`, inline: true },
           { name: "Mã đơn", value: purchaseCode, inline: true },
-          { name: "Email Google", value: escapeDiscordMarkdown(order.email).slice(0, 1024) }
+          { name: order.delivery_type === "groupbuy" ? "Discord ID" : "Email Google", value: escapeDiscordMarkdown(order.delivery_type === "groupbuy" ? order.discord_id : order.email).slice(0, 1024) }
         ],
         timestamp: new Date().toISOString()
       }]
@@ -100,14 +101,14 @@ async function claimOrder(sql, purchaseCode, amount, reference) {
   await sql`
     UPDATE purchase_orders
     SET status = 'expired'
-    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive') AND status = 'pending'
+    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive', 'groupbuy') AND status = 'pending'
       AND created_at <= NOW() - INTERVAL '30 minutes'
   `;
   const rows = await sql`
     UPDATE purchase_orders
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive') OR created_at > NOW() - INTERVAL '30 minutes')
+      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive', 'groupbuy') OR created_at > NOW() - INTERVAL '30 minutes')
     RETURNING id, course_id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
@@ -129,7 +130,9 @@ exports.handler = async (event) => {
   try {
     const sql = db();
     await ensureLearningTables();
+    await ensureGroupBuyTables(sql);
     await ensureTables();
+    await expireGroupBuyReservations(sql);
     const inserted = await sql`
       INSERT INTO sepay_transactions (id, purchase_code, reference_code, amount, payload)
       VALUES (${transactionId}, ${purchaseCode}, ${String(payload.referenceCode || "")}, ${amount}, ${JSON.stringify(payload)})
@@ -151,6 +154,21 @@ exports.handler = async (event) => {
     }
 
     await notifyDiscord(order, purchaseCode, amount).catch(error => console.error("sepay discord error", error));
+
+    if (order.delivery_type === "groupbuy") {
+      try {
+        const approved = await approveGroupBuyOrder(order, sql);
+        await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
+        await notifyGroupBuyApproved(approved)
+          .then(() => sql`UPDATE purchase_orders SET discord_notified_at = NOW() WHERE id = ${order.id}`)
+          .catch(error => console.error("sepay GroupBuy notification error", error));
+        return json(200, { success: true, status: "approved", type: "groupbuy" });
+      } catch (error) {
+        await sql`UPDATE purchase_orders SET status = 'paid', paid_at = COALESCE(paid_at, NOW()) WHERE id = ${order.id}`;
+        await sql`UPDATE sepay_transactions SET match_status = 'groupbuy_failed' WHERE id = ${transactionId}`;
+        throw error;
+      }
+    }
 
     if (order.delivery_type === "hls") {
       try {

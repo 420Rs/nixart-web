@@ -1115,6 +1115,7 @@ module.exports = {
   isCourseSaleReady,
   isForumCourseSaleReady,
   normalizeLearningProgress,
+  paymentQr,
   publicCatalog,
   recordLessonView,
   saveLearningProgress
