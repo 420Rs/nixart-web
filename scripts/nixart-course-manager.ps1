@@ -446,8 +446,8 @@ $header.Controls.Add($subheading)
 
 $statusLabel = New-Object Windows.Forms.Label
 $statusLabel.Text = "SẴN SÀNG  ·  Chưa có thay đổi"
-$statusLabel.Location = New-Object Drawing.Point(650, 20)
-$statusLabel.Size = New-Object Drawing.Size(230, 36)
+$statusLabel.Location = New-Object Drawing.Point(515, 20)
+$statusLabel.Size = New-Object Drawing.Size(190, 36)
 $statusLabel.Anchor = "Top, Right"
 $statusLabel.BackColor = $surface2
 $statusLabel.ForeColor = $muted
@@ -457,10 +457,23 @@ $statusLabel.AutoEllipsis = $true
 $statusLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $header.Controls.Add($statusLabel)
 
+$groupBuyButton = New-Object Windows.Forms.Button
+$groupBuyButton.Text = "GROUPBUY"
+$groupBuyButton.Size = New-Object Drawing.Size(140, 38)
+$groupBuyButton.Location = New-Object Drawing.Point(719, 19)
+$groupBuyButton.Anchor = "Top, Right"
+$groupBuyButton.FlatStyle = "Flat"
+$groupBuyButton.BackColor = $surface2
+$groupBuyButton.ForeColor = $discord
+$groupBuyButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
+$groupBuyButton.FlatAppearance.BorderColor = $discord
+$groupBuyButton.FlatAppearance.MouseOverBackColor = [Drawing.Color]::FromArgb(31, 34, 60)
+$header.Controls.Add($groupBuyButton)
+
 $accessButton = New-Object Windows.Forms.Button
 $accessButton.Text = "QUẢN LÝ EMAIL"
 $accessButton.Size = New-Object Drawing.Size(160, 38)
-$accessButton.Location = New-Object Drawing.Point(894, 19)
+$accessButton.Location = New-Object Drawing.Point(873, 19)
 $accessButton.Anchor = "Top, Right"
 $accessButton.FlatStyle = "Flat"
 $accessButton.BackColor = $surface2
@@ -472,8 +485,8 @@ $header.Controls.Add($accessButton)
 
 $syncButton = New-Object Windows.Forms.Button
 $syncButton.Text = "ĐỒNG BỘ DISCORD"
-$syncButton.Size = New-Object Drawing.Size(190, 38)
-$syncButton.Location = New-Object Drawing.Point(1068, 19)
+$syncButton.Size = New-Object Drawing.Size(211, 38)
+$syncButton.Location = New-Object Drawing.Point(1047, 19)
 $syncButton.Anchor = "Top, Right"
 $syncButton.FlatStyle = "Flat"
 $syncButton.BackColor = $discord
@@ -988,6 +1001,53 @@ function Revoke-GoogleAccessGrant {
   Invoke-GoogleAccessManagerCommand ("--revoke {0}" -f $GrantId)
 }
 
+function Invoke-GroupBuyManagerCommand {
+  param([string]$Arguments)
+
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = "--env-file-if-exists=.env scripts/manage-groupbuys.js $Arguments"
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+
+  $process = New-Object Diagnostics.Process
+  try {
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy trình quản lý GroupBuy." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.Result.Trim()
+    $stderr = $stderrTask.Result.Trim()
+    $exitCode = $process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
+  if ($exitCode -ne 0) {
+    if ($stderr) { throw $stderr }
+    throw "Không thể quản lý GroupBuy (mã $exitCode)."
+  }
+  $stdout
+}
+
+function Get-GroupBuyCampaigns {
+  $json = Invoke-GroupBuyManagerCommand "--list"
+  if (-not $json) { return @() }
+  @($json | ConvertFrom-Json | ForEach-Object { $_ })
+}
+
+function New-GroupBuyCampaign {
+  param($Data)
+  $json = $Data | ConvertTo-Json -Depth 5 -Compress
+  $base64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+  (Invoke-GroupBuyManagerCommand ("--create-base64 {0}" -f $base64)) | ConvertFrom-Json
+}
+
 function Quote-StreamImportArgument {
   param([string]$Value)
   if ($Value -match '["\x00-\x1F]') { throw "Giá trị nhập STREAM chứa ký tự không được hỗ trợ." }
@@ -1166,6 +1226,7 @@ $importTimer.Add_Tick({
   $script:ImportCourseId = ""
   $script:SyncRunning = $false
   $syncButton.Enabled = $true
+  $groupBuyButton.Enabled = $true
   $accessButton.Enabled = $true
   $listToolbar.Enabled = $true
   $courseGrid.Enabled = $true
@@ -1461,6 +1522,255 @@ $importButton.Add_Click({
   })
 
   $dialog.CancelButton = $closeImportButton
+  [void]$dialog.ShowDialog($form)
+  $dialog.Dispose()
+})
+$groupBuyButton.Add_Click({
+  if ($script:SyncRunning) { return }
+
+  $dialog = New-Object Windows.Forms.Form
+  $dialog.Text = "Quản lý GroupBuy"
+  $dialog.StartPosition = "CenterParent"
+  $dialog.FormBorderStyle = "FixedDialog"
+  $dialog.MaximizeBox = $false
+  $dialog.MinimizeBox = $false
+  $dialog.ShowInTaskbar = $false
+  $dialog.ClientSize = New-Object Drawing.Size(920, 720)
+  $dialog.BackColor = $bg
+  $dialog.ForeColor = $text
+  $dialog.Font = New-Object Drawing.Font("Segoe UI", 10)
+
+  $title = New-Object Windows.Forms.Label
+  $title.Text = "GROUPBUY"
+  $title.Font = New-Object Drawing.Font("Segoe UI Semibold", 14)
+  $title.AutoSize = $true
+  $title.Location = New-Object Drawing.Point(22, 16)
+  $dialog.Controls.Add($title)
+
+  $copy = New-Object Windows.Forms.Label
+  $copy.Text = "Tạo bài Discord kèm link khóa học, ảnh, preview và thanh toán 40k / 400k. Đơn không hết hạn."
+  $copy.ForeColor = $muted
+  $copy.AutoSize = $true
+  $copy.Location = New-Object Drawing.Point(23, 47)
+  $dialog.Controls.Add($copy)
+
+  function Add-GroupBuyLabel([string]$TextValue, [int]$X, [int]$Y) {
+    $label = New-Object Windows.Forms.Label
+    $label.Text = $TextValue
+    $label.ForeColor = $muted
+    $label.AutoSize = $true
+    $label.Location = New-Object Drawing.Point($X, $Y)
+    $dialog.Controls.Add($label)
+  }
+  function New-GroupBuyTextBox([int]$X, [int]$Y, [int]$Width, [int]$Height = 30, [bool]$Multiline = $false) {
+    $box = New-Object Windows.Forms.TextBox
+    $box.Location = New-Object Drawing.Point($X, $Y)
+    $box.Size = New-Object Drawing.Size($Width, $Height)
+    $box.Multiline = $Multiline
+    if ($Multiline) { $box.ScrollBars = "Vertical" }
+    $box.BackColor = $surface2
+    $box.ForeColor = $text
+    $box.BorderStyle = "FixedSingle"
+    $dialog.Controls.Add($box)
+    $box
+  }
+
+  Add-GroupBuyLabel "TÊN KHÓA HỌC" 23 78
+  $groupTitleBox = New-GroupBuyTextBox 26 100 868
+  $groupTitleBox.MaxLength = 100
+
+  Add-GroupBuyLabel "MÔ TẢ" 23 137
+  $groupDescriptionBox = New-GroupBuyTextBox 26 159 868 58 $true
+  $groupDescriptionBox.MaxLength = 1000
+
+  Add-GroupBuyLabel "LINK KHÓA HỌC GỐC (HTTPS)" 23 229
+  $groupCourseUrlBox = New-GroupBuyTextBox 26 251 868
+  $groupCourseUrlBox.MaxLength = 2000
+
+  Add-GroupBuyLabel "LINK ẢNH BÌA (HTTPS)" 23 288
+  $groupImageBox = New-GroupBuyTextBox 26 310 424
+  $groupImageBox.MaxLength = 2000
+  Add-GroupBuyLabel "LINK PREVIEW (HTTPS)" 467 288
+  $groupPreviewBox = New-GroupBuyTextBox 470 310 424
+  $groupPreviewBox.MaxLength = 2000
+
+  Add-GroupBuyLabel "GIÁ ĐẦY ĐỦ" 23 347
+  $groupPriceBox = New-Object Windows.Forms.NumericUpDown
+  $groupPriceBox.Location = New-Object Drawing.Point(26, 369)
+  $groupPriceBox.Size = New-Object Drawing.Size(205, 30)
+  $groupPriceBox.Minimum = 10000
+  $groupPriceBox.Maximum = 2000000000
+  $groupPriceBox.Increment = 10000
+  $groupPriceBox.Value = 400000
+  $groupPriceBox.ThousandsSeparator = $true
+  $groupPriceBox.BackColor = $surface2
+  $groupPriceBox.ForeColor = $text
+  $dialog.Controls.Add($groupPriceBox)
+
+  Add-GroupBuyLabel "SỐ NGƯỜI" 252 347
+  $groupSlotsBox = New-Object Windows.Forms.NumericUpDown
+  $groupSlotsBox.Location = New-Object Drawing.Point(255, 369)
+  $groupSlotsBox.Size = New-Object Drawing.Size(120, 30)
+  $groupSlotsBox.Minimum = 2
+  $groupSlotsBox.Maximum = 100
+  $groupSlotsBox.Value = 10
+  $groupSlotsBox.BackColor = $surface2
+  $groupSlotsBox.ForeColor = $text
+  $dialog.Controls.Add($groupSlotsBox)
+
+  $testHint = New-Object Windows.Forms.Label
+  $testHint.Text = "ID test: 820650129529765938 · tạo đơn test không giới hạn, không chiếm suất."
+  $testHint.ForeColor = $success
+  $testHint.AutoSize = $true
+  $testHint.Location = New-Object Drawing.Point(397, 374)
+  $dialog.Controls.Add($testHint)
+
+  $closeButton = New-Object Windows.Forms.Button
+  $closeButton.Text = "ĐÓNG"
+  $closeButton.Size = New-Object Drawing.Size(110, 36)
+  $closeButton.Location = New-Object Drawing.Point(654, 420)
+  $closeButton.FlatStyle = "Flat"
+  $closeButton.BackColor = $surface
+  $closeButton.ForeColor = $muted
+  $closeButton.FlatAppearance.BorderColor = $border
+  $closeButton.DialogResult = [Windows.Forms.DialogResult]::Cancel
+  $dialog.Controls.Add($closeButton)
+
+  $createButton = New-Object Windows.Forms.Button
+  $createButton.Text = "TẠO & ĐĂNG"
+  $createButton.Size = New-Object Drawing.Size(130, 36)
+  $createButton.Location = New-Object Drawing.Point(774, 420)
+  $createButton.FlatStyle = "Flat"
+  $createButton.BackColor = $discord
+  $createButton.ForeColor = $text
+  $createButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 9)
+  $createButton.FlatAppearance.BorderColor = $discord
+  $dialog.Controls.Add($createButton)
+
+  $listLabel = New-Object Windows.Forms.Label
+  $listLabel.Text = "GROUPBUY ĐÃ ĐĂNG"
+  $listLabel.Font = New-Object Drawing.Font("Segoe UI Semibold", 10)
+  $listLabel.AutoSize = $true
+  $listLabel.Location = New-Object Drawing.Point(23, 476)
+  $dialog.Controls.Add($listLabel)
+
+  $groupGrid = New-Object Windows.Forms.DataGridView
+  $groupGrid.Location = New-Object Drawing.Point(26, 504)
+  $groupGrid.Size = New-Object Drawing.Size(868, 190)
+  $groupGrid.ReadOnly = $true
+  $groupGrid.AllowUserToAddRows = $false
+  $groupGrid.AllowUserToDeleteRows = $false
+  $groupGrid.AllowUserToResizeRows = $false
+  $groupGrid.AutoGenerateColumns = $false
+  $groupGrid.SelectionMode = "FullRowSelect"
+  $groupGrid.MultiSelect = $false
+  $groupGrid.RowHeadersVisible = $false
+  $groupGrid.BackgroundColor = $surface
+  $groupGrid.BorderStyle = "FixedSingle"
+  $groupGrid.GridColor = $border
+  $groupGrid.EnableHeadersVisualStyles = $false
+  $groupGrid.ColumnHeadersDefaultCellStyle.BackColor = $surface2
+  $groupGrid.ColumnHeadersDefaultCellStyle.ForeColor = $text
+  $groupGrid.ColumnHeadersHeight = 36
+  $groupGrid.DefaultCellStyle.BackColor = $surface
+  $groupGrid.DefaultCellStyle.ForeColor = $text
+  $groupGrid.DefaultCellStyle.SelectionBackColor = $discord
+  $groupGrid.DefaultCellStyle.SelectionForeColor = $text
+  $groupGrid.AlternatingRowsDefaultCellStyle.BackColor = $surface2
+  $groupGrid.RowTemplate.Height = 36
+  $dialog.Controls.Add($groupGrid)
+
+  foreach ($columnInfo in @(
+    @{ Name = "Khóa học"; Width = 300 },
+    @{ Name = "Giá"; Width = 110 },
+    @{ Name = "Tiến độ"; Width = 90 },
+    @{ Name = "Trạng thái"; Width = 130 },
+    @{ Name = "Link khóa"; Width = 230 }
+  )) {
+    $column = New-Object Windows.Forms.DataGridViewTextBoxColumn
+    $column.HeaderText = $columnInfo.Name
+    $column.Width = $columnInfo.Width
+    if ($columnInfo.Name -eq "Link khóa") { $column.AutoSizeMode = "Fill" }
+    [void]$groupGrid.Columns.Add($column)
+  }
+
+  $setBusy = {
+    param([bool]$Busy)
+    $dialog.UseWaitCursor = $Busy
+    foreach ($control in @($groupTitleBox, $groupDescriptionBox, $groupCourseUrlBox, $groupImageBox, $groupPreviewBox, $groupPriceBox, $groupSlotsBox, $createButton, $closeButton)) {
+      $control.Enabled = -not $Busy
+    }
+  }
+  $refreshList = {
+    & $setBusy $true
+    try {
+      $groupGrid.Rows.Clear()
+      foreach ($campaign in @(Get-GroupBuyCampaigns)) {
+        $status = switch ([string]$campaign.status) { "funded" { "Đủ người" } "exclusive" { "Độc quyền" } default { "Đang mở" } }
+        [void]$groupGrid.Rows.Add(
+          [string]$campaign.title,
+          ("{0:N0}đ" -f [decimal]$campaign.totalPrice),
+          ("{0}/{1}" -f [int]$campaign.paidSlots, [int]$campaign.targetSlots),
+          $status,
+          [string]$campaign.courseUrl
+        )
+      }
+      $listLabel.Text = "GROUPBUY ĐÃ ĐĂNG  ·  $($groupGrid.Rows.Count)"
+      $groupGrid.ClearSelection()
+    } catch {
+      Write-Log "LỖI TẢI GROUPBUY: $($_.Exception.Message)"
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể tải GroupBuy", "OK", "Error") | Out-Null
+    } finally {
+      & $setBusy $false
+    }
+  }
+
+  $createButton.Add_Click({
+    $courseUrl = $groupCourseUrlBox.Text.Trim()
+    $imageUrl = $groupImageBox.Text.Trim()
+    $previewUrl = $groupPreviewBox.Text.Trim()
+    $price = [int64]$groupPriceBox.Value
+    $slots = [int]$groupSlotsBox.Value
+    if (-not $groupTitleBox.Text.Trim() -or -not $courseUrl -or -not (Test-HttpsUrl $courseUrl 2000) -or
+        -not (Test-HttpsUrl $imageUrl 2000) -or -not (Test-HttpsUrl $previewUrl 2000) -or $price % $slots -ne 0) {
+      [Windows.Forms.MessageBox]::Show("Nhập tên, link khóa HTTPS hợp lệ; giá phải chia đều cho số người.", "Dữ liệu chưa hợp lệ", "OK", "Warning") | Out-Null
+      return
+    }
+    try {
+      & $setBusy $true
+      $created = New-GroupBuyCampaign ([pscustomobject][ordered]@{
+        title = $groupTitleBox.Text.Trim()
+        description = $groupDescriptionBox.Text.Trim()
+        courseUrl = $courseUrl
+        imageUrl = $imageUrl
+        previewUrl = $previewUrl
+        totalPrice = $price
+        targetSlots = $slots
+      })
+      $statusLabel.Text = "Đã đăng GroupBuy."
+      $statusLabel.ForeColor = $success
+      Write-Log "GROUPBUY: $([string]$created.discordUrl)"
+      [Windows.Forms.MessageBox]::Show("Đã đăng GroupBuy:`r`n$([string]$created.discordUrl)", "Hoàn tất", "OK", "Information") | Out-Null
+      $groupTitleBox.Clear()
+      $groupDescriptionBox.Clear()
+      $groupCourseUrlBox.Clear()
+      $groupImageBox.Clear()
+      $groupPreviewBox.Clear()
+      & $refreshList
+    } catch {
+      $statusLabel.Text = "Đăng GroupBuy thất bại."
+      $statusLabel.ForeColor = $danger
+      Write-Log "LỖI GROUPBUY: $($_.Exception.Message)"
+      [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể đăng GroupBuy", "OK", "Error") | Out-Null
+    } finally {
+      if (-not $dialog.IsDisposed) { & $setBusy $false }
+    }
+  })
+
+  $dialog.AcceptButton = $createButton
+  $dialog.CancelButton = $closeButton
+  & $refreshList
+  [void]$groupTitleBox.Focus()
   [void]$dialog.ShowDialog($form)
   $dialog.Dispose()
 })
@@ -1763,6 +2073,7 @@ $deleteButton.Add_Click({
 
     $form.UseWaitCursor = $true
     $syncButton.Enabled = $false
+    $groupBuyButton.Enabled = $false
     $accessButton.Enabled = $false
     $listToolbar.Enabled = $false
     $courseGrid.Enabled = $false
@@ -1809,6 +2120,7 @@ $deleteButton.Add_Click({
   } finally {
     $form.UseWaitCursor = $false
     $syncButton.Enabled = $true
+    $groupBuyButton.Enabled = $true
     $accessButton.Enabled = $true
     $listToolbar.Enabled = $true
     $courseGrid.Enabled = $true
@@ -2040,8 +2352,10 @@ try {
       throw "Các nút catalog sai vị trí hoặc đang chồng nhau."
     }
     if ($deleteButton.Enabled) { throw "Nút xóa phải tắt khi chưa chọn khóa học." }
-    if ($accessButton.Parent -ne $header -or $statusLabel.Bounds.IntersectsWith($accessButton.Bounds) -or $accessButton.Bounds.IntersectsWith($syncButton.Bounds)) { throw "Nút cấp quyền email sai vị trí hoặc đang chồng nhau." }
-    if ($statusLabel.Bottom -gt $header.ClientSize.Height -or $accessButton.Bottom -gt $header.ClientSize.Height -or $syncButton.Bottom -gt $header.ClientSize.Height) { throw "Điều khiển header nằm ngoài khung." }
+    if ($groupBuyButton.Parent -ne $header -or $accessButton.Parent -ne $header -or
+        $statusLabel.Bounds.IntersectsWith($groupBuyButton.Bounds) -or $groupBuyButton.Bounds.IntersectsWith($accessButton.Bounds) -or
+        $accessButton.Bounds.IntersectsWith($syncButton.Bounds)) { throw "Các nút header sai vị trí hoặc đang chồng nhau." }
+    if ($statusLabel.Bottom -gt $header.ClientSize.Height -or $groupBuyButton.Bottom -gt $header.ClientSize.Height -or $accessButton.Bottom -gt $header.ClientSize.Height -or $syncButton.Bottom -gt $header.ClientSize.Height) { throw "Điều khiển header nằm ngoài khung." }
     $accessOptions = @(Get-GoogleAccessOptions)
     if (@($accessOptions | Where-Object { [string]$_.Value -cnotmatch '^[a-z0-9][a-z0-9_-]{0,79}$' }).Count -gt 0) { throw "Danh sách cấp quyền chỉ được chứa khóa STREAM hợp lệ." }
     Write-Host ("LAYOUT-TEST OK form={0}x{1} content={2} editor={3}px log={4}" -f $form.ClientSize.Width, $form.ClientSize.Height, $split.Bounds, $split.Panel2.ClientSize.Width, $outputGroup.Bounds)

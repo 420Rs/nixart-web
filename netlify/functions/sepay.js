@@ -1,7 +1,7 @@
 const { neon } = require("@neondatabase/serverless");
 const { google } = require("googleapis");
 const { approveHlsOrder, ensureLearningTables, escapeDiscordMarkdown } = require("../../learning");
-const { approveGroupBuyOrder, ensureGroupBuyTables, expireGroupBuyReservations } = require("../../groupbuy");
+const { approveGroupBuyOrder, ensureGroupBuyTables } = require("../../groupbuy");
 const { notifyGroupBuyApproved, notifyPaymentApproved } = require("../../discord-bot");
 
 let sqlClient;
@@ -101,14 +101,14 @@ async function claimOrder(sql, purchaseCode, amount, reference) {
   await sql`
     UPDATE purchase_orders
     SET status = 'expired'
-    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive', 'groupbuy') AND status = 'pending'
+    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive') AND status = 'pending'
       AND created_at <= NOW() - INTERVAL '30 minutes'
   `;
   const rows = await sql`
     UPDATE purchase_orders
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive', 'groupbuy') OR created_at > NOW() - INTERVAL '30 minutes')
+      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive') OR created_at > NOW() - INTERVAL '30 minutes')
     RETURNING id, course_id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
@@ -132,7 +132,6 @@ exports.handler = async (event) => {
     await ensureLearningTables();
     await ensureGroupBuyTables(sql);
     await ensureTables();
-    await expireGroupBuyReservations(sql);
     const inserted = await sql`
       INSERT INTO sepay_transactions (id, purchase_code, reference_code, amount, payload)
       VALUES (${transactionId}, ${purchaseCode}, ${String(payload.referenceCode || "")}, ${amount}, ${JSON.stringify(payload)})

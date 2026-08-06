@@ -34,6 +34,7 @@ const {
 } = require("./learning");
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
+  GROUPBUY_TEST_DISCORD_ID,
   attachGroupBuyMessage,
   createGroupBuyCampaign,
   createGroupBuyPurchase,
@@ -134,7 +135,7 @@ function groupBuyMessage(campaign) {
       { name: "Mỗi suất góp", value: `${campaign.sharePrice.toLocaleString("vi-VN")}đ`, inline: true },
       { name: "Tiến độ", value: `**${paid}/${campaign.targetSlots}**${pending ? ` · ${pending} đang chờ thanh toán` : ""}\n${progress}`, inline: false }
     )
-    .setFooter({ text: `Mã GroupBuy: ${campaign.id} · Mỗi tài khoản chỉ góp 1 suất` });
+    .setFooter({ text: `Mã GroupBuy: ${campaign.id} · Mỗi tài khoản chỉ góp 1 suất · Không giới hạn thời gian` });
   if (campaign.imageUrl) embed.setImage(campaign.imageUrl);
   const buttons = [
     new ButtonBuilder()
@@ -148,6 +149,12 @@ function groupBuyMessage(campaign) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(closed || exclusiveLocked)
   ];
+  buttons.push(new ButtonBuilder()
+    .setCustomId(`groupbuy_test:${campaign.id}`)
+    .setLabel(`Test ${campaign.sharePrice.toLocaleString("vi-VN")}đ`)
+    .setStyle(ButtonStyle.Success)
+    .setDisabled(closed));
+  if (campaign.courseUrl) buttons.push(new ButtonBuilder().setLabel("Link khóa học").setStyle(ButtonStyle.Link).setURL(campaign.courseUrl));
   if (campaign.previewUrl) buttons.push(new ButtonBuilder().setLabel("Xem trước").setStyle(ButtonStyle.Link).setURL(campaign.previewUrl));
   return { embeds: [embed], components: [new ActionRowBuilder().addComponents(...buttons)] };
 }
@@ -167,9 +174,12 @@ async function notifyGroupBuyApproved(order) {
   const campaign = await refreshGroupBuyMessage(order.course_id);
   if (!campaign) throw new Error(`GroupBuy không tồn tại: ${order.course_id}`);
   const exclusive = order.access_scope === "groupbuy_exclusive";
+  const testOrder = order.access_scope === "groupbuy_test";
   const user = await client.users.fetch(String(order.discord_id));
   await user.send({
-    content: exclusive
+    content: testOrder
+      ? `✅ **Thanh toán test thành công**\nĐơn test cho **${escapeDiscordMarkdown(campaign.title)}** đã được SePay xác nhận; tiến độ GroupBuy không bị thay đổi.`
+      : exclusive
       ? `✅ **Thanh toán độc quyền thành công**\nBạn đã mua toàn bộ **${escapeDiscordMarkdown(campaign.title)}**. Admin sẽ liên hệ để bàn giao.`
       : `✅ **Góp GroupBuy thành công**\nBạn đã được ghi nhận 1 suất trong **${escapeDiscordMarkdown(campaign.title)}** (${campaign.paidSlots}/${campaign.targetSlots}). Bot sẽ thông báo khi đủ người và khóa học sẵn sàng.`
   });
@@ -215,6 +225,7 @@ async function registerCommands(applicationId) {
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
       .addStringOption(option => option.setName("tieu-de").setDescription("Tên khóa học").setRequired(true).setMaxLength(100))
       .addStringOption(option => option.setName("mo-ta").setDescription("Mô tả ngắn").setMaxLength(1000))
+      .addStringOption(option => option.setName("link-khoa").setDescription("Link khóa học HTTPS").setMaxLength(2000))
       .addIntegerOption(option => option.setName("gia").setDescription("Giá đầy đủ, mặc định 400000").setMinValue(10000).setMaxValue(2000000000))
       .addIntegerOption(option => option.setName("so-nguoi").setDescription("Số người góp, mặc định 10").setMinValue(2).setMaxValue(100))
       .addStringOption(option => option.setName("anh").setDescription("Link ảnh HTTPS").setMaxLength(2000))
@@ -345,7 +356,9 @@ async function renderPaymentReply(interaction, order) {
       text: order.deliveryType === "drive"
         ? "Chuyển đúng nội dung. SePay xác nhận xong, email trên sẽ được thêm vào thư mục Drive."
         : order.deliveryType === "groupbuy"
-          ? "Suất được giữ 30 phút. Chuyển đúng số tiền và nội dung; SePay xác nhận xong bot sẽ tự cập nhật tiến độ."
+          ? order.scope === "test"
+            ? `Đơn test dành riêng cho Discord ID ${GROUPBUY_TEST_DISCORD_ID}; không chiếm suất và không đổi tiến độ.`
+            : "Đơn GroupBuy không hết hạn. Chuyển đúng số tiền và nội dung; SePay xác nhận xong bot sẽ tự cập nhật tiến độ."
         : order.scope !== "course"
           ? "Gói tháng áp dụng cho STREAM; khóa DRIVE bán lẻ. Bot mở quyền khi SePay xác nhận."
           : "Chuyển đúng số tiền và nội dung. Bot sẽ mở quyền khi SePay xác nhận."
@@ -363,6 +376,7 @@ async function createGroupBuyCommand(interaction) {
   const campaign = await createGroupBuyCampaign({
     title: interaction.options.getString("tieu-de", true),
     description: interaction.options.getString("mo-ta") || "",
+    courseUrl: interaction.options.getString("link-khoa") || "",
     totalPrice: interaction.options.getInteger("gia") || 400000,
     targetSlots: interaction.options.getInteger("so-nguoi") || 10,
     imageUrl: interaction.options.getString("anh") || "",
@@ -379,7 +393,7 @@ async function createGroupBuyCommand(interaction) {
 
 async function groupBuyButton(interaction) {
   const [prefix, id] = interaction.customId.split(":", 2);
-  const kind = prefix === "groupbuy_exclusive" ? "exclusive" : "share";
+  const kind = prefix === "groupbuy_test" ? "test" : prefix === "groupbuy_exclusive" ? "exclusive" : "share";
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const order = await createGroupBuyPurchase({
     campaignId: id,
@@ -437,6 +451,7 @@ async function handleInteraction(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith("buy_course:")) return buyCourseButton(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("groupbuy_share:")) return groupBuyButton(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("groupbuy_exclusive:")) return groupBuyButton(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("groupbuy_test:")) return groupBuyButton(interaction);
   } catch (error) {
     console.error("Discord interaction error", error);
     const message = { content: "Không xử lý được yêu cầu lúc này. Vui lòng thử lại.", components: [] };
