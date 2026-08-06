@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { groupBuyMessage } = require("../discord-bot");
-const { createGroupBuyCampaign, createGroupBuyPurchase, safeHttpsUrl } = require("../groupbuy");
+const { attachGroupBuyPost, createGroupBuyCampaign, createGroupBuyPurchase, safeHttpsUrl } = require("../groupbuy");
 
 test("GroupBuy post shows 0/10 and both payment choices", () => {
   const message = groupBuyMessage({
@@ -99,4 +99,11 @@ test("one Discord ID can create multiple contribution orders", async () => {
   assert.notEqual(first.purchaseCode, second.purchaseCode);
   assert.equal(inserts, 2);
   assert.equal(queries.filter(query => query.includes("UPDATE groupbuy_campaigns SET reserved_slots")).length, 2);
+});
+
+test("forum post stores its thread as the campaign channel", async () => {
+  let values;
+  const sql = async (_strings, ...params) => { values = params; return []; };
+  await attachGroupBuyPost("course-ab12", "1535000000000000001", "1535000000000000001", sql);
+  assert.deepEqual(values, ["1535000000000000001", "1535000000000000001", "course-ab12"]);
 });

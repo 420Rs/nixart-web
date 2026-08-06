@@ -2,6 +2,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   Client,
   EmbedBuilder,
   Events,
@@ -35,6 +36,7 @@ const {
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
   attachGroupBuyMessage,
+  attachGroupBuyPost,
   createGroupBuyCampaign,
   createGroupBuyPurchase,
   getGroupBuyCampaign,
@@ -374,7 +376,17 @@ async function createGroupBuyCommand(interaction) {
     createdBy: interaction.user.id
   });
   const channel = await client.channels.fetch(channelId);
-  if (!channel?.isTextBased()) throw new Error("Kênh GroupBuy không phải kênh text");
+  if (channel?.type === ChannelType.GuildForum) {
+    const thread = await channel.threads.create({
+      name: campaign.title.slice(0, 100),
+      message: groupBuyMessage(campaign)
+    });
+    const message = await thread.fetchStarterMessage();
+    if (!message) throw new Error("Không lấy được bài mở đầu trong diễn đàn");
+    await attachGroupBuyPost(campaign.id, thread.id, message.id);
+    return interaction.editReply({ content: `Đã đăng **${escapeDiscordMarkdown(campaign.title)}**: https://discord.com/channels/${interaction.guildId}/${thread.id}/${message.id}` });
+  }
+  if (!channel?.isTextBased()) throw new Error("Kênh GroupBuy không hỗ trợ đăng bài");
   const message = await channel.send(groupBuyMessage(campaign));
   await attachGroupBuyMessage(campaign.id, message.id);
   return interaction.editReply({ content: `Đã đăng **${escapeDiscordMarkdown(campaign.title)}**: https://discord.com/channels/${interaction.guildId}/${channelId}/${message.id}` });

@@ -176,6 +176,14 @@ async function attachGroupBuyMessage(id, messageId, sqlOverride) {
   await sql`UPDATE groupbuy_campaigns SET message_id = ${String(messageId)}, updated_at = NOW() WHERE id = ${id}`;
 }
 
+async function attachGroupBuyPost(id, channelId, messageId, sqlOverride) {
+  if (!/^\d{15,25}$/.test(String(channelId || ""))) throw new Error("Discord channel ID không hợp lệ");
+  if (!/^\d{15,25}$/.test(String(messageId || ""))) throw new Error("Discord message ID không hợp lệ");
+  if (!sqlOverride) await ensureGroupBuyTables();
+  const sql = sqlOverride || db();
+  await sql`UPDATE groupbuy_campaigns SET channel_id = ${String(channelId)}, message_id = ${String(messageId)}, updated_at = NOW() WHERE id = ${id}`;
+}
+
 async function createGroupBuyPurchase({ campaignId: id, kind, discordId, displayName }, sqlOverride) {
   const campaignIdValue = String(id || "").trim().toLowerCase();
   const accessScope = kind === "exclusive" ? "groupbuy_exclusive" : kind === "share" ? "groupbuy_share" : "";
@@ -302,6 +310,7 @@ module.exports = {
   GROUPBUY_ID_RE,
   approveGroupBuyOrder,
   attachGroupBuyMessage,
+  attachGroupBuyPost,
   createGroupBuyCampaign,
   createGroupBuyPurchase,
   ensureGroupBuyTables,

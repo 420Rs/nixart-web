@@ -3,6 +3,7 @@ const { groupBuyMessage } = require("../discord-bot");
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
   attachGroupBuyMessage,
+  attachGroupBuyPost,
   createGroupBuyCampaign,
   listGroupBuyCampaigns
 } = require("../groupbuy");
@@ -27,15 +28,21 @@ async function createAndPublish(input) {
   });
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN);
   const channel = await rest.get(Routes.channel(channelId));
-  if (channel.type !== 0) throw new Error("Kênh GroupBuy phải là text channel");
+  if (![0, 15].includes(channel.type)) throw new Error("Kênh GroupBuy phải là text channel hoặc forum");
   const built = groupBuyMessage(campaign);
-  const message = await rest.post(Routes.channelMessages(channelId), {
-    body: {
-      embeds: built.embeds.map(embed => embed.toJSON()),
-      components: built.components.map(row => row.toJSON()),
-      allowed_mentions: { parse: [] }
-    }
-  });
+  const body = {
+    embeds: built.embeds.map(embed => embed.toJSON()),
+    components: built.components.map(row => row.toJSON()),
+    allowed_mentions: { parse: [] }
+  };
+  if (channel.type === 15) {
+    const thread = await rest.post(Routes.threads(channelId), {
+      body: { name: campaign.title.slice(0, 100), message: body }
+    });
+    await attachGroupBuyPost(campaign.id, thread.id, thread.id);
+    return { ...campaign, channelId: thread.id, messageId: thread.id, discordUrl: `https://discord.com/channels/${channel.guild_id}/${thread.id}/${thread.id}` };
+  }
+  const message = await rest.post(Routes.channelMessages(channelId), { body });
   await attachGroupBuyMessage(campaign.id, message.id);
   return { ...campaign, messageId: message.id, discordUrl: `https://discord.com/channels/${channel.guild_id}/${channelId}/${message.id}` };
 }
