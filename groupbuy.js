@@ -3,7 +3,6 @@ const { neon } = require("@neondatabase/serverless");
 const { ensureLearningTables, paymentQr } = require("./learning");
 
 const DEFAULT_GROUPBUY_CHANNEL_ID = "1534754527671091270";
-const GROUPBUY_TEST_DISCORD_ID = "820650129529765938";
 const GROUPBUY_ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 let sqlClient;
 let tablesReady;
@@ -69,11 +68,10 @@ async function ensureTables(sql) {
   `;
   await sql`ALTER TABLE groupbuy_campaigns ADD COLUMN IF NOT EXISTS course_url TEXT NOT NULL DEFAULT ''`;
   await sql`DROP INDEX IF EXISTS purchase_orders_one_active_groupbuy_user_idx`;
+  await sql`DROP INDEX IF EXISTS purchase_orders_one_active_groupbuy_user_v2_idx`;
   await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_active_groupbuy_user_v2_idx
-    ON purchase_orders (discord_id, course_id)
-    WHERE delivery_type = 'groupbuy' AND status IN ('pending', 'processing', 'paid', 'approved')
-      AND discord_id <> '820650129529765938'
+    UPDATE purchase_orders SET status = 'expired'
+    WHERE delivery_type = 'groupbuy' AND access_scope = 'groupbuy_test' AND status = 'pending'
   `;
 }
 
@@ -180,47 +178,12 @@ async function attachGroupBuyMessage(id, messageId, sqlOverride) {
 
 async function createGroupBuyPurchase({ campaignId: id, kind, discordId, displayName }, sqlOverride) {
   const campaignIdValue = String(id || "").trim().toLowerCase();
-  const testOrder = String(discordId) === GROUPBUY_TEST_DISCORD_ID && kind === "test";
-  const accessScope = testOrder ? "groupbuy_test" : kind === "exclusive" ? "groupbuy_exclusive" : kind === "share" ? "groupbuy_share" : "";
+  const accessScope = kind === "exclusive" ? "groupbuy_exclusive" : kind === "share" ? "groupbuy_share" : "";
   if (!GROUPBUY_ID_RE.test(campaignIdValue) || !accessScope || !/^\d{15,25}$/.test(String(discordId || ""))) {
     throw new Error("Yêu cầu GroupBuy không hợp lệ");
   }
   if (!sqlOverride) await ensureGroupBuyTables();
   const sql = sqlOverride || db();
-  const existing = testOrder ? [] : await sql`
-    SELECT purchase_code, course_title, amount, access_scope, status
-    FROM purchase_orders
-    WHERE discord_id = ${String(discordId)} AND course_id = ${campaignIdValue}
-      AND delivery_type = 'groupbuy' AND status IN ('pending', 'processing', 'paid', 'approved')
-    ORDER BY created_at DESC LIMIT 1
-  `;
-  if (existing[0]) {
-    if (existing[0].status !== "pending" || existing[0].access_scope !== accessScope) {
-      throw new Error("Bạn đã tham gia hoặc đang có đơn khác trong GroupBuy này");
-    }
-    const campaign = await getGroupBuyCampaign(campaignIdValue, sql);
-    return orderResult(existing[0], campaign, true, kind);
-  }
-
-  if (testOrder) {
-    const campaign = await getGroupBuyCampaign(campaignIdValue, sql);
-    if (!campaign || campaign.status !== "open") throw new Error("GroupBuy không còn mở để test");
-    const purchaseCode = `NIX${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-    const tokenHash = crypto.createHash("sha256").update(crypto.randomBytes(32)).digest("hex");
-    const inserted = await sql`
-      INSERT INTO purchase_orders (
-        id, purchase_code, token_hash, course_id, course_title, drive_folder_id,
-        email, payer_name, amount, delivery_type, discord_id, access_scope, order_origin
-      ) VALUES (
-        ${crypto.randomUUID()}, ${purchaseCode}, ${tokenHash}, ${campaign.id}, ${campaign.title}, '',
-        ${`${discordId}@discord.invalid`}, ${String(displayName || discordId).slice(0, 200)}, ${campaign.sharePrice},
-        'groupbuy', ${String(discordId)}, 'groupbuy_test', 'discord'
-      )
-      RETURNING purchase_code, course_title, amount, access_scope, status
-    `;
-    return orderResult(inserted[0], campaign, false, "test");
-  }
-
   const reserved = kind === "exclusive"
     ? await sql`
         UPDATE groupbuy_campaigns SET exclusive_reserved = TRUE, updated_at = NOW()
@@ -255,7 +218,6 @@ async function createGroupBuyPurchase({ campaignId: id, kind, discordId, display
       ${`${discordId}@discord.invalid`}, ${String(displayName || discordId).slice(0, 200)}, ${amount},
       'groupbuy', ${String(discordId)}, ${accessScope}, 'discord'
     )
-    ON CONFLICT DO NOTHING
     RETURNING purchase_code, course_title, amount, access_scope, status
   `;
   if (!inserted[0]) {
@@ -264,7 +226,7 @@ async function createGroupBuyPurchase({ campaignId: id, kind, discordId, display
     } else {
       await sql`UPDATE groupbuy_campaigns SET reserved_slots = GREATEST(0, reserved_slots - 1) WHERE id = ${campaignIdValue}`;
     }
-    throw new Error("Bạn đã có đơn GroupBuy đang hoạt động");
+    throw new Error("Không tạo được đơn GroupBuy");
   }
   const campaign = await getGroupBuyCampaign(campaignIdValue, sql);
   return orderResult(inserted[0], campaign, false, kind);
@@ -298,7 +260,6 @@ async function approveGroupBuyOrder(order, sqlOverride) {
     RETURNING id, course_id, course_title, discord_id, access_scope
   `;
   if (!rows[0]) throw new Error("Không thể xác nhận đơn GroupBuy");
-  if (rows[0].access_scope === "groupbuy_test") return rows[0];
   if (rows[0].access_scope === "groupbuy_exclusive") {
     await sql`UPDATE groupbuy_campaigns SET status = 'exclusive', updated_at = NOW() WHERE id = ${rows[0].course_id}`;
   } else {
@@ -338,7 +299,6 @@ async function markGroupBuyNotified(orderId, sqlOverride) {
 
 module.exports = {
   DEFAULT_GROUPBUY_CHANNEL_ID,
-  GROUPBUY_TEST_DISCORD_ID,
   GROUPBUY_ID_RE,
   approveGroupBuyOrder,
   attachGroupBuyMessage,

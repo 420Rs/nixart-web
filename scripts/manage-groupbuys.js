@@ -2,7 +2,6 @@ const { REST, Routes } = require("discord.js");
 const { groupBuyMessage } = require("../discord-bot");
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
-  GROUPBUY_TEST_DISCORD_ID,
   attachGroupBuyMessage,
   createGroupBuyCampaign,
   listGroupBuyCampaigns
@@ -24,7 +23,7 @@ async function createAndPublish(input) {
   const campaign = await createGroupBuyCampaign({
     ...input,
     channelId,
-    createdBy: GROUPBUY_TEST_DISCORD_ID
+    createdBy: String(process.env.DISCORD_OWNER_ID || "820650129529765938")
   });
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN);
   const channel = await rest.get(Routes.channel(channelId));

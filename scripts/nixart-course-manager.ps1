@@ -1618,12 +1618,12 @@ $groupBuyButton.Add_Click({
   $groupSlotsBox.ForeColor = $text
   $dialog.Controls.Add($groupSlotsBox)
 
-  $testHint = New-Object Windows.Forms.Label
-  $testHint.Text = "ID test: 820650129529765938 · tạo đơn test không giới hạn, không chiếm suất."
-  $testHint.ForeColor = $success
-  $testHint.AutoSize = $true
-  $testHint.Location = New-Object Drawing.Point(397, 374)
-  $dialog.Controls.Add($testHint)
+  $multiContributionHint = New-Object Windows.Forms.Label
+  $multiContributionHint.Text = "Mỗi tài khoản có thể góp nhiều suất; mỗi lần bấm sẽ tạo một mã thanh toán mới."
+  $multiContributionHint.ForeColor = $success
+  $multiContributionHint.AutoSize = $true
+  $multiContributionHint.Location = New-Object Drawing.Point(397, 374)
+  $dialog.Controls.Add($multiContributionHint)
 
   $closeButton = New-Object Windows.Forms.Button
   $closeButton.Text = "ĐÓNG"
