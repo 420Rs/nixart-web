@@ -7,7 +7,7 @@ function json(statusCode, body) {
 }
 
 function authorized(event) {
-  const expected = Buffer.from(String(process.env.RVP_ADMIN_TOKEN || ""));
+  const expected = Buffer.from(String(process.env.RVP_ADMIN_TOKEN || process.env.ADMIN_PASSWORD || ""));
   const actual = Buffer.from(String(event.headers?.authorization || event.headers?.Authorization || "").replace(/^Bearer\s+/i, ""));
   return expected.length >= 32 && expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }

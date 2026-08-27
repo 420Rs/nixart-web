@@ -13,8 +13,8 @@ function db() {
 }
 
 function secret() {
-  const value = String(process.env.RVP_LICENSE_SECRET || "");
-  if (Buffer.byteLength(value) < 32) throw new Error("RVP_LICENSE_SECRET must contain at least 32 bytes");
+  const value = String(process.env.RVP_LICENSE_SECRET || process.env.SEPAY_API_KEY || "");
+  if (Buffer.byteLength(value) < 32) throw new Error("RVP_LICENSE_SECRET or SEPAY_API_KEY must contain at least 32 bytes");
   return value;
 }
 
