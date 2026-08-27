@@ -277,7 +277,7 @@ function Get-CourseValidationError {
   if ($SaleEnabled -and $Price -le 0) { return "Muốn mở thanh toán, giá khóa học phải lớn hơn 0." }
   if ($SaleEnabled -and $DeliveryMode -eq "NON-STREAM") { return "Khóa NON-STREAM chưa có cách giao nội dung nên không thể mở thanh toán." }
   if ($SaleEnabled -and $DeliveryMode -eq "STREAM" -and -not $HasPublishedLesson) { return "Muốn mở thanh toán STREAM, khóa học phải có ít nhất một bài HLS đã published." }
-  if ($SaleEnabled -and $DeliveryMode -eq "RVP_DEVICE" -and -not $HasRvpPackage) { return "Muốn mở thanh toán RVP, hãy dùng nút ĐÓNG GÓI RVP trước." }
+  if ($SaleEnabled -and $DeliveryMode -eq "RVP_DEVICE" -and -not $HasRvpPackage) { return "Muốn mở thanh toán RVP, hãy dùng nút NẠP RVP ĐÃ CÓ trước." }
   if ($FreeAccess -and $SaleEnabled) { return "Khóa học miễn phí không thể đồng thời mở thanh toán." }
   if ($FreeAccess -and -not $Published) { return "Muốn chia sẻ miễn phí, khóa học phải được công khai trên web." }
   if ($FreeAccess -and -not $RightsVerified) { return "Muốn chia sẻ miễn phí, bạn phải xác nhận quyền phân phối khóa học." }
@@ -610,18 +610,6 @@ $importButton.ForeColor = $success
 $importButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $importButton.FlatAppearance.BorderColor = $success
 $listToolbar.Controls.Add($importButton)
-
-$rvpButton = New-Object Windows.Forms.Button
-$rvpButton.Text = "ĐÓNG GÓI RVP"
-$rvpButton.Size = New-Object Drawing.Size(100, 34)
-$rvpButton.Location = New-Object Drawing.Point(220, 12)
-$rvpButton.Anchor = "Top, Right"
-$rvpButton.FlatStyle = "Flat"
-$rvpButton.BackColor = $surface2
-$rvpButton.ForeColor = $accent
-$rvpButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.3)
-$rvpButton.FlatAppearance.BorderColor = $accent
-$listToolbar.Controls.Add($rvpButton)
 
 $deleteButton = New-Object Windows.Forms.Button
 $deleteButton.Text = "XÓA BÀI ĐĂNG"
@@ -1318,10 +1306,10 @@ $rvpTimer.Add_Tick({
   if ($exitCode -eq 0) {
     Refresh-CourseList $courseId
     Load-CourseIntoEditor $courseId
-    $statusLabel.Text = "RVP đã đóng gói và đăng ký server."
+    $statusLabel.Text = "RVP đã nạp và đăng ký server."
     $statusLabel.ForeColor = $success
   } else {
-    $statusLabel.Text = "Đóng gói RVP thất bại."
+    $statusLabel.Text = "Nạp RVP thất bại."
     $statusLabel.ForeColor = $danger
   }
 })
@@ -1422,57 +1410,6 @@ function Start-RvpExistingImport {
   }
 }
 
-$rvpButton.Add_Click({
-  if ($script:SyncRunning) { return }
-  if ($courseGrid.SelectedRows.Count -ne 1) {
-    [Windows.Forms.MessageBox]::Show("Hãy tạo/lưu rồi chọn khóa học cần đóng gói.", "Đóng gói RVP", "OK", "Information") | Out-Null
-    return
-  }
-  $courseId = [string]$courseGrid.SelectedRows[0].Tag
-  $course = @($script:Catalog.courses) | Where-Object { [string]$_.id -ceq $courseId } | Select-Object -First 1
-  if ($null -eq $course) { return }
-  $folderPicker = New-Object Windows.Forms.FolderBrowserDialog
-  $folderPicker.Description = "Chọn folder chứa video và subtitle của khóa học"
-  $folderPicker.ShowNewFolderButton = $false
-  if ($folderPicker.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $folderPicker.Dispose(); return }
-  $sourceFolder = $folderPicker.SelectedPath
-  $folderPicker.Dispose()
-  $saveDialog = New-Object Windows.Forms.SaveFileDialog
-  $saveDialog.Title = "Lưu file RVP dùng chung để upload lên Drive"
-  $saveDialog.Filter = "Nixart course package (*.rvp)|*.rvp"
-  $saveDialog.FileName = "$courseId.rvp"
-  if ($saveDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $saveDialog.Dispose(); return }
-  $outputPath = $saveDialog.FileName
-  $saveDialog.Dispose()
-  $driveFolder = $driveFolderBox.Text.Trim()
-  if (-not $driveFolder) {
-    $driveFolder = [Microsoft.VisualBasic.Interaction]::InputBox(
-      "Dán link hoặc ID folder Google Drive. Manager sẽ tự upload file .rvp vào folder này và lấy link chia sẻ.",
-      "Folder Drive chứa RVP", "https://drive.google.com/drive/folders/...").Trim()
-  }
-  if (-not $driveFolder) { return }
-  try {
-    $startInfo = New-RvpPackStartInfo $sourceFolder $courseId ([string]$course.title) $outputPath $driveFolder
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $startInfo
-    if (-not $process.Start()) { throw "Không thể khởi chạy bộ đóng gói RVP." }
-    $script:RvpProcess = $process
-    $script:RvpStdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $script:RvpStderrTask = $process.StandardError.ReadToEndAsync()
-    $script:RvpCourseId = $courseId
-    $script:SyncRunning = $true
-    $listToolbar.Enabled = $false
-    $courseGrid.Enabled = $false
-    $editor.Enabled = $false
-    $statusLabel.Text = "Đang mã hóa folder thành RVP..."
-    $statusLabel.ForeColor = $accent
-    Write-Log "Bắt đầu đóng gói RVP '$([string]$course.title)' ($courseId) -> $outputPath"
-    $rvpTimer.Start()
-  } catch {
-    [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể đóng gói RVP", "OK", "Error") | Out-Null
-    Write-Log "LỖI RVP: $($_.Exception.Message)"
-  }
-})
 $importButton.Add_Click({
   if ($script:SyncRunning) { return }
 
