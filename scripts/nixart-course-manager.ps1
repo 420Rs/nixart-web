@@ -284,6 +284,7 @@ function Get-CourseValidationError {
   if ($FreeAccess -and $DeliveryMode -ne "STREAM") { return "Chia sẻ miễn phí hiện chỉ áp dụng cho khóa STREAM." }
   if ($FreeAccess -and -not $HasPublishedLesson) { return "Khóa miễn phí phải có ít nhất một bài HLS đã published." }
   if ($DeliveryMode -eq "DRIVE" -and -not (Resolve-DriveFolderId $DriveFolderValue)) { return "Khóa DRIVE cần folder ID hoặc URL thư mục drive.google.com hợp lệ." }
+  if ($DeliveryMode -eq "RVP_DEVICE" -and $DriveFolderValue -and -not (Resolve-DriveFolderId $DriveFolderValue)) { return "Link Drive của RVP phải là folder ID hoặc URL thư mục drive.google.com hợp lệ." }
   if ($ImageUrl.Length -gt 2000 -or -not (Test-HttpsUrl $ImageUrl 2000)) { return "URL ảnh bìa phải là liên kết HTTPS hợp lệ (tối đa 2.000 ký tự)." }
   if ($PreviewUrl.Length -gt 512 -or -not (Test-HttpsUrl $PreviewUrl 512)) { return "Link preview phải là liên kết HTTPS hợp lệ (tối đa 512 ký tự)." }
   $null
@@ -839,7 +840,8 @@ $driveFolderBox = New-EditorTextBox 376 30
 $driveFolderBox.MaxLength = 2000
 $driveFolderBox.Enabled = $false
 $deliveryBox.Add_SelectedIndexChanged({
-  $driveFolderBox.Enabled = $deliveryBox.SelectedIndex -eq 1
+  # DRIVE and RVP both use one shared Drive folder/link input.
+  $driveFolderBox.Enabled = $deliveryBox.SelectedIndex -in @(1, 3)
 })
 
 $rightsBox = New-Object Windows.Forms.CheckBox
@@ -1369,9 +1371,12 @@ $rvpButton.Add_Click({
   if ($saveDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $saveDialog.Dispose(); return }
   $outputPath = $saveDialog.FileName
   $saveDialog.Dispose()
-  $driveFolder = [Microsoft.VisualBasic.Interaction]::InputBox(
-    "Dán link hoặc ID folder Google Drive. Manager sẽ tự upload file .rvp vào folder này và lấy link chia sẻ.",
-    "Folder Drive chứa RVP", "https://drive.google.com/drive/folders/...").Trim()
+  $driveFolder = $driveFolderBox.Text.Trim()
+  if (-not $driveFolder) {
+    $driveFolder = [Microsoft.VisualBasic.Interaction]::InputBox(
+      "Dán link hoặc ID folder Google Drive. Manager sẽ tự upload file .rvp vào folder này và lấy link chia sẻ.",
+      "Folder Drive chứa RVP", "https://drive.google.com/drive/folders/...").Trim()
+  }
   if (-not $driveFolder) { return }
   try {
     $startInfo = New-RvpPackStartInfo $sourceFolder $courseId ([string]$course.title) $outputPath $driveFolder
@@ -2291,7 +2296,7 @@ $saveButton.Add_Click({
     $planTier = [string]$planBox.SelectedItem
     $deliveryMode = switch ($deliveryBox.SelectedIndex) { 1 { "DRIVE" } 2 { "STREAM" } 3 { "RVP_DEVICE" } default { "NON-STREAM" } }
     $driveFolderValue = $driveFolderBox.Text.Trim()
-    $driveFolderId = if ($deliveryMode -eq "DRIVE") { Resolve-DriveFolderId $driveFolderValue } else { "" }
+    $driveFolderId = if ($deliveryMode -in @("DRIVE", "RVP_DEVICE")) { Resolve-DriveFolderId $driveFolderValue } else { "" }
     $editingCourse = if ($script:EditingCourseId) {
       @($script:Catalog.courses) | Where-Object { [string]$_.id -eq $script:EditingCourseId } | Select-Object -First 1
     } else { $null }
@@ -2492,7 +2497,9 @@ try {
     $priceLabel = $editorBody.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "GIÁ BÁN (VNĐ)" } | Select-Object -First 1
     $planLabel = $editorBody.Controls | Where-Object { $_ -is [Windows.Forms.Label] -and $_.Text -eq "THUỘC GÓI" } | Select-Object -First 1
     if ($priceLabel.Bounds.IntersectsWith($planLabel.Bounds)) { throw "Nhãn Giá bán và Thuộc gói đang chồng nhau." }
-    if ($deliveryBox.Items.Count -ne 3) { throw "Danh sách hình thức học phải có NON-STREAM, DRIVE và STREAM." }
+    if ($deliveryBox.Items.Count -ne 4) { throw "Danh sách hình thức học phải có NON-STREAM, DRIVE, STREAM và RVP_DEVICE." }
+    $deliveryBox.SelectedIndex = 3
+    if (-not $driveFolderBox.Enabled) { throw "Ô Drive phải mở khi chọn RVP_DEVICE." }
     if ($driveFolderBox.Top -lt $deliveryBox.Bottom) { throw "Ô thư mục Drive đang chồng lên danh sách hình thức học." }
     if ($courseGrid.RowTemplate.Height -ne 40) { throw "Hàng catalog phải cao 40px." }
     if ($saveButton.Bottom -gt $editorHeader.ClientSize.Height -or $cancelButton.Bottom -gt $editorHeader.ClientSize.Height) { throw "Nút lưu hoặc hủy nằm ngoài header trình sửa." }
