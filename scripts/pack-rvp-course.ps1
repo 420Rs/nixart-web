@@ -35,9 +35,9 @@ try {
   $packagePath = if ($ExistingPackage) { [IO.Path]::GetFullPath($ExistingPackage) } else { [IO.Path]::GetFullPath($OutputPath) }
   if ($ExistingPackage) {
     $package = Get-Content -LiteralPath $KeyJson -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$package.course_id -cne $CourseId) { throw "Key JSON không thuộc course $CourseId." }
+    if ([string]::IsNullOrWhiteSpace([string]$package.course_id)) { throw "Key JSON has no package course ID." }
     $actualHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualHash -ne ([string]$package.package_sha256).Trim().ToLowerInvariant()) { throw "SHA-256 của RVP không khớp key JSON." }
+    if ($actualHash -ne ([string]$package.package_sha256).Trim().ToLowerInvariant()) { throw "RVP SHA-256 does not match key JSON." }
   } else {
     & $PlayerExe --pack-course $SourceFolder $CourseId $OutputPath --title $Title --key-out $keyFile
     if ($LASTEXITCODE -ne 0 -or -not [IO.File]::Exists($keyFile)) { throw "RVP packaging failed." }
@@ -54,6 +54,7 @@ try {
   }
   $body = @{
     course_id = $CourseId
+    package_course_id = [string]$package.course_id
     title = $Title
     download_url = $DownloadUrl
     course_key = [string]$package.course_key

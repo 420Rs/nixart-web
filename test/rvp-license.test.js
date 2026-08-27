@@ -19,10 +19,11 @@ test("RVP registration rejects malformed keys and non-HTTPS links", () => {
     course_key: Buffer.alloc(32).toString("base64"), package_sha256: "a".repeat(64)
   }), /Invalid RVP/);
   const valid = courseRegistration({
-    course_id: "course-a", title: "A", download_url: "https://example.com/a.rvp",
+    course_id: "course-a", package_course_id: "package-random-1", title: "A", download_url: "https://example.com/a.rvp",
     course_key: Buffer.alloc(32).toString("base64"), package_sha256: "a".repeat(64)
   });
   assert.equal(valid.courseId, "course-a");
+  assert.equal(valid.packageCourseId, "package-random-1");
 });
 
 test("one-time code is deterministic and a redeemed course key unwraps only on that device", async () => {
@@ -38,13 +39,14 @@ test("one-time code is deterministic and a redeemed course key unwraps only on t
     const sql = async (strings) => {
       const query = strings.join(" ");
       if (/UPDATE rvp_access_codes/.test(query)) return [{ course_id: "course-a" }];
-      if (/SELECT course_id, title, download_url, course_key/.test(query)) return [{
-        course_id: "course-a", title: "Course A", download_url: "https://example.com/a.rvp",
+      if (/SELECT course_id, package_course_id, title, download_url, course_key/.test(query)) return [{
+        course_id: "course-a", package_course_id: "package-random-1", title: "Course A", download_url: "https://example.com/a.rvp",
         course_key: courseKey.toString("base64"), package_sha256: "a".repeat(64)
       }];
       return [];
     };
     const result = await redeem({ code: accessCode(order), device_id: device.deviceId, pairing_code: device.code }, sql);
+    assert.equal(result.course_id, "package-random-1");
     const unwrapped = crypto.privateDecrypt({ key: device.privateKey, oaepHash: "sha256" }, Buffer.from(result.wrapped_key, "base64"));
     assert.deepEqual(unwrapped, courseKey);
   } finally {
