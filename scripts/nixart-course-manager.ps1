@@ -842,7 +842,21 @@ $driveFolderBox.Enabled = $false
 $deliveryBox.Add_SelectedIndexChanged({
   # DRIVE and RVP both use one shared Drive folder/link input.
   $driveFolderBox.Enabled = $deliveryBox.SelectedIndex -in @(1, 3)
+  $rvpImportButton.Enabled = $deliveryBox.SelectedIndex -eq 3
 })
+
+$rvpImportButton = New-Object Windows.Forms.Button
+$rvpImportButton.Text = "NẠP RVP ĐÃ CÓ"
+$rvpImportButton.Size = New-Object Drawing.Size(150, 30)
+$rvpImportButton.Location = New-Object Drawing.Point(448, 410)
+$rvpImportButton.Anchor = "Top, Right"
+$rvpImportButton.FlatStyle = "Flat"
+$rvpImportButton.BackColor = $surface2
+$rvpImportButton.ForeColor = $accent
+$rvpImportButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.2)
+$rvpImportButton.FlatAppearance.BorderColor = $accent
+$rvpImportButton.Enabled = $false
+$editorBody.Controls.Add($rvpImportButton)
 
 $rightsBox = New-Object Windows.Forms.CheckBox
 $rightsBox.Text = "Tôi xác nhận có quyền phân phối khóa học"
@@ -1134,21 +1148,22 @@ function Get-LocalConfigValue {
 }
 
 function New-RvpPackStartInfo {
-  param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DriveFolder)
+  param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DriveFolder, [string]$ExistingPackage = "", [string]$KeyJson = "", [string]$DownloadUrl = "")
   $token = Get-LocalConfigValue "RVP_ADMIN_TOKEN"
   if ($token.Length -lt 32) { $token = Get-LocalConfigValue "ADMIN_PASSWORD" }
   if ($token.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN hoặc ADMIN_PASSWORD trong biến môi trường/file .env." }
   $apiBase = Get-LocalConfigValue "RVP_API_BASE"
   if (-not $apiBase) { $apiBase = "https://nixart-web.onrender.com" }
   $scriptPath = Join-Path $script:RepoRoot "scripts\pack-rvp-course.ps1"
-  $arguments = @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-StreamImportArgument $scriptPath),
-    '-SourceFolder', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($Folder))),
-    '-CourseId', $CourseId, '-Title', (Quote-StreamImportArgument $Title),
-    '-OutputPath', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($OutputPath))),
-    '-DriveFolder', (Quote-StreamImportArgument $DriveFolder),
-    '-ApiBase', (Quote-StreamImportArgument $apiBase)
-  )
+  $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-StreamImportArgument $scriptPath))
+  if ($ExistingPackage) {
+    $arguments += @('-ExistingPackage', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($ExistingPackage))), '-KeyJson', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($KeyJson))))
+  } else {
+    $arguments += @('-SourceFolder', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($Folder))))
+  }
+  $arguments += @('-CourseId', $CourseId, '-Title', (Quote-StreamImportArgument $Title), '-OutputPath', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($OutputPath))), '-ApiBase', (Quote-StreamImportArgument $apiBase))
+  if ($DownloadUrl) { $arguments += @('-DownloadUrl', (Quote-StreamImportArgument $DownloadUrl)) }
+  elseif ($DriveFolder) { $arguments += @('-DriveFolder', (Quote-StreamImportArgument $DriveFolder)) }
   $startInfo = New-Object Diagnostics.ProcessStartInfo
   $startInfo.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
   $startInfo.Arguments = $arguments -join ' '
@@ -1349,6 +1364,64 @@ $importTimer.Add_Tick({
 
 $newButton.Add_Click({ Clear-Editor })
 $cancelButton.Add_Click({ Clear-Editor })
+$rvpImportButton.Add_Click({ Start-RvpExistingImport })
+
+function Start-RvpExistingImport {
+  if ($script:SyncRunning) { return }
+  if ($courseGrid.SelectedRows.Count -ne 1) {
+    [Windows.Forms.MessageBox]::Show("Hãy tạo/lưu rồi chọn khóa học cần nạp RVP.", "Nạp RVP", "OK", "Information") | Out-Null
+    return
+  }
+  $courseId = [string]$courseGrid.SelectedRows[0].Tag
+  $course = @($script:Catalog.courses) | Where-Object { [string]$_.id -ceq $courseId } | Select-Object -First 1
+  if ($null -eq $course) { return }
+
+  $packageDialog = New-Object Windows.Forms.OpenFileDialog
+  $packageDialog.Title = "Chọn file RVP đã tạo từ ReVoice"
+  $packageDialog.Filter = "Nixart course package (*.rvp)|*.rvp"
+  if ($packageDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $packageDialog.Dispose(); return }
+  $packagePath = $packageDialog.FileName
+  $packageDialog.Dispose()
+
+  $keyDialog = New-Object Windows.Forms.OpenFileDialog
+  $keyDialog.Title = "Chọn file .key.json cạnh file RVP"
+  $keyDialog.Filter = "RVP key (*.key.json;*.json)|*.key.json;*.json"
+  if ($keyDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $keyDialog.Dispose(); return }
+  $keyPath = $keyDialog.FileName
+  $keyDialog.Dispose()
+
+  $driveInput = $driveFolderBox.Text.Trim()
+  if (-not $driveInput) {
+    $driveInput = [Microsoft.VisualBasic.Interaction]::InputBox(
+      "Dán link file .rvp trên Drive (hoặc folder để Manager upload file này).",
+      "Link Drive của RVP", "https://drive.google.com/file/d/...").Trim()
+  }
+  if (-not $driveInput) { return }
+  try {
+    $folderId = Resolve-DriveFolderId $driveInput
+    $downloadUrl = if ($folderId) { "" } else { $driveInput }
+    $startInfo = New-RvpPackStartInfo "" $courseId ([string]$course.title) $packagePath $driveInput $packagePath $keyPath $downloadUrl
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy đăng ký RVP." }
+    $script:RvpProcess = $process
+    $script:RvpStdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $script:RvpStderrTask = $process.StandardError.ReadToEndAsync()
+    $script:RvpCourseId = $courseId
+    $script:SyncRunning = $true
+    $listToolbar.Enabled = $false
+    $courseGrid.Enabled = $false
+    $editor.Enabled = $false
+    $statusLabel.Text = "Đang đăng ký RVP đã có..."
+    $statusLabel.ForeColor = $accent
+    Write-Log "Nạp RVP đã có '$([string]$course.title)' ($courseId) -> $packagePath"
+    $rvpTimer.Start()
+  } catch {
+    [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể nạp RVP", "OK", "Error") | Out-Null
+    Write-Log "LỖI nạp RVP: $($_.Exception.Message)"
+  }
+}
+
 $rvpButton.Add_Click({
   if ($script:SyncRunning) { return }
   if ($courseGrid.SelectedRows.Count -ne 1) {
