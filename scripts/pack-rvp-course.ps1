@@ -5,7 +5,7 @@ param(
   [Parameter(Mandatory = $true)][string]$Title,
   [Parameter(Mandatory = $true)][string]$OutputPath,
   [Parameter(Mandatory = $true)][string]$DownloadUrl,
-  [string]$ApiBase = "https://learn.nixart.io.vn",
+  [string]$ApiBase = "https://nixart-web.onrender.com",
   [string]$PlayerExe = $env:NIXART_PLAYER_EXE
 )
 

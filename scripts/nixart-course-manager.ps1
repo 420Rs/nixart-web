@@ -1135,8 +1135,8 @@ function New-RvpPackStartInfo {
   param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DownloadUrl)
   $token = Get-LocalConfigValue "RVP_ADMIN_TOKEN"
   if ($token.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN trong biến môi trường hoặc file .env." }
-  $apiBase = Get-LocalConfigValue "PUBLIC_BASE_URL"
-  if (-not $apiBase) { $apiBase = "https://learn.nixart.io.vn" }
+  $apiBase = Get-LocalConfigValue "RVP_API_BASE"
+  if (-not $apiBase) { $apiBase = "https://nixart-web.onrender.com" }
   $scriptPath = Join-Path $script:RepoRoot "scripts\pack-rvp-course.ps1"
   $arguments = @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-StreamImportArgument $scriptPath),
