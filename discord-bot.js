@@ -491,6 +491,10 @@ async function startDiscordBot() {
       .catch(error => console.error("Could not register Discord commands", error));
     notifyPendingPayments().catch(error => console.error("Could not recover Discord payment notifications", error));
     notifyPendingGroupBuyPayments().catch(error => console.error("Could not recover GroupBuy notifications", error));
+    setInterval(() => {
+      notifyPendingPayments().catch(error => console.error("Could not poll Discord payment notifications", error));
+      notifyPendingGroupBuyPayments().catch(error => console.error("Could not poll GroupBuy notifications", error));
+    }, 15_000).unref();
   });
   await client.login(process.env.DISCORD_BOT_TOKEN);
   return client;

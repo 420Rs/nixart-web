@@ -166,7 +166,8 @@ if (require.main === module) {
   (async () => {
     await ensureAuthTables();
     await ensureLearningTables();
-    if (process.env.DISCORD_BOT_TOKEN) await startDiscordBot();
+    // Render serves webhooks; the local instance owns Discord because it has private delivery data.
+    if (process.env.DISCORD_BOT_TOKEN && process.env.RENDER !== "true") await startDiscordBot();
     server.listen(Number(process.env.PORT) || 3000, "0.0.0.0", () => {
       console.log(`Nixart listening on ${process.env.PORT || 3000}`);
     });
