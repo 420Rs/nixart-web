@@ -14,30 +14,30 @@ $ErrorActionPreference = "Stop"
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $catalogPath = Join-Path $repoRoot "content\catalog.json"
 if (-not $PlayerExe) { $PlayerExe = "E:\Revoice\str to dub\windows_player\bin\Release\net10.0-windows\NixartPlayer.exe" }
-if (-not [IO.File]::Exists($PlayerExe)) { throw "Không tìm thấy NixartPlayer.exe: $PlayerExe" }
-if (-not [IO.Directory]::Exists($SourceFolder)) { throw "Không tìm thấy folder: $SourceFolder" }
-if ($CourseId -cnotmatch "^[a-z0-9][a-z0-9_-]{1,63}$") { throw "Mã khóa học không hợp lệ." }
+if (-not [IO.File]::Exists($PlayerExe)) { throw "NixartPlayer.exe not found: $PlayerExe" }
+if (-not [IO.Directory]::Exists($SourceFolder)) { throw "Source folder not found: $SourceFolder" }
+if ($CourseId -cnotmatch "^[a-z0-9][a-z0-9_-]{1,63}$") { throw "Invalid course ID." }
 $downloadUri = $null
 if (-not $DownloadUrl) {
   $folderId = if ($DriveFolder -match '^[A-Za-z0-9_-]{10,200}$') { $DriveFolder } elseif ($DriveFolder -match '/folders/([A-Za-z0-9_-]{10,200})') { $matches[1] } else { "" }
-  if (-not $folderId) { throw "Cần link/ID folder Drive để tự upload RVP." }
+  if (-not $folderId) { throw "A Google Drive folder link or ID is required." }
 }
 $adminToken = [string]$env:RVP_ADMIN_TOKEN
-if ($adminToken.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN (tối thiểu 32 ký tự)." }
+if ($adminToken.Length -lt 32) { throw "RVP_ADMIN_TOKEN is missing or shorter than 32 characters." }
 
 $keyFile = Join-Path ([IO.Path]::GetTempPath()) ("nixart-rvp-{0}.json" -f [Guid]::NewGuid().ToString("N"))
 try {
   & $PlayerExe --pack-course $SourceFolder $CourseId $OutputPath --title $Title --key-out $keyFile
-  if ($LASTEXITCODE -ne 0 -or -not [IO.File]::Exists($keyFile)) { throw "Player đóng gói RVP thất bại." }
+  if ($LASTEXITCODE -ne 0 -or -not [IO.File]::Exists($keyFile)) { throw "RVP packaging failed." }
   $package = Get-Content -LiteralPath $keyFile -Raw -Encoding UTF8 | ConvertFrom-Json
   if (-not $DownloadUrl) {
     $uploader = Join-Path $PSScriptRoot "upload-rvp-drive.js"
     $envPath = Join-Path $repoRoot ".env"
     $DownloadUrl = (& node "--env-file-if-exists=$envPath" $uploader $OutputPath $folderId).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $DownloadUrl) { throw "Upload RVP lên Drive thất bại." }
+    if ($LASTEXITCODE -ne 0 -or -not $DownloadUrl) { throw "RVP upload to Google Drive failed." }
   }
   if (-not [Uri]::TryCreate($DownloadUrl, [UriKind]::Absolute, [ref]$downloadUri) -or $downloadUri.Scheme -ne "https") {
-    throw "Link tải .rvp phải là HTTPS."
+    throw "RVP download URL must use HTTPS."
   }
   $body = @{
     course_id = $CourseId
@@ -53,7 +53,7 @@ try {
   $catalogBytes = [IO.File]::ReadAllBytes($catalogPath)
   $catalog = [Text.Encoding]::UTF8.GetString($catalogBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
   $course = @($catalog.courses) | Where-Object { [string]$_.id -ceq $CourseId } | Select-Object -First 1
-  if ($null -eq $course) { throw "Server đã nhận khóa nhưng catalog không có course '$CourseId'. Hãy tạo khóa học trước rồi chạy lại." }
+  if ($null -eq $course) { throw "Server accepted the key but catalog has no course '$CourseId'. Create the course first, then retry." }
   foreach ($item in @(
     @{ Name = "deliveryMode"; Value = "RVP_DEVICE" },
     @{ Name = "streamAvailable"; Value = $false },
