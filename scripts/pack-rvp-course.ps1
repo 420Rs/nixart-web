@@ -4,7 +4,8 @@ param(
   [Parameter(Mandatory = $true)][string]$CourseId,
   [Parameter(Mandatory = $true)][string]$Title,
   [Parameter(Mandatory = $true)][string]$OutputPath,
-  [Parameter(Mandatory = $true)][string]$DownloadUrl,
+  [string]$DownloadUrl,
+  [string]$DriveFolder,
   [string]$ApiBase = "https://nixart-web.onrender.com",
   [string]$PlayerExe = $env:NIXART_PLAYER_EXE
 )
@@ -17,8 +18,9 @@ if (-not [IO.File]::Exists($PlayerExe)) { throw "Không tìm thấy NixartPlayer
 if (-not [IO.Directory]::Exists($SourceFolder)) { throw "Không tìm thấy folder: $SourceFolder" }
 if ($CourseId -cnotmatch "^[a-z0-9][a-z0-9_-]{1,63}$") { throw "Mã khóa học không hợp lệ." }
 $downloadUri = $null
-if (-not [Uri]::TryCreate($DownloadUrl, [UriKind]::Absolute, [ref]$downloadUri) -or $downloadUri.Scheme -ne "https") {
-  throw "Link tải .rvp phải là HTTPS."
+if (-not $DownloadUrl) {
+  $folderId = if ($DriveFolder -match '^[A-Za-z0-9_-]{10,200}$') { $DriveFolder } elseif ($DriveFolder -match '/folders/([A-Za-z0-9_-]{10,200})') { $matches[1] } else { "" }
+  if (-not $folderId) { throw "Cần link/ID folder Drive để tự upload RVP." }
 }
 $adminToken = [string]$env:RVP_ADMIN_TOKEN
 if ($adminToken.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN (tối thiểu 32 ký tự)." }
@@ -28,6 +30,15 @@ try {
   & $PlayerExe --pack-course $SourceFolder $CourseId $OutputPath --title $Title --key-out $keyFile
   if ($LASTEXITCODE -ne 0 -or -not [IO.File]::Exists($keyFile)) { throw "Player đóng gói RVP thất bại." }
   $package = Get-Content -LiteralPath $keyFile -Raw -Encoding UTF8 | ConvertFrom-Json
+  if (-not $DownloadUrl) {
+    $uploader = Join-Path $PSScriptRoot "upload-rvp-drive.js"
+    $envPath = Join-Path $repoRoot ".env"
+    $DownloadUrl = (& node "--env-file-if-exists=$envPath" $uploader $OutputPath $folderId).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $DownloadUrl) { throw "Upload RVP lên Drive thất bại." }
+  }
+  if (-not [Uri]::TryCreate($DownloadUrl, [UriKind]::Absolute, [ref]$downloadUri) -or $downloadUri.Scheme -ne "https") {
+    throw "Link tải .rvp phải là HTTPS."
+  }
   $body = @{
     course_id = $CourseId
     title = $Title

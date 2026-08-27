@@ -1132,7 +1132,7 @@ function Get-LocalConfigValue {
 }
 
 function New-RvpPackStartInfo {
-  param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DownloadUrl)
+  param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DriveFolder)
   $token = Get-LocalConfigValue "RVP_ADMIN_TOKEN"
   if ($token.Length -lt 32) { $token = Get-LocalConfigValue "ADMIN_PASSWORD" }
   if ($token.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN hoặc ADMIN_PASSWORD trong biến môi trường/file .env." }
@@ -1144,7 +1144,7 @@ function New-RvpPackStartInfo {
     '-SourceFolder', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($Folder))),
     '-CourseId', $CourseId, '-Title', (Quote-StreamImportArgument $Title),
     '-OutputPath', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($OutputPath))),
-    '-DownloadUrl', (Quote-StreamImportArgument $DownloadUrl),
+    '-DriveFolder', (Quote-StreamImportArgument $DriveFolder),
     '-ApiBase', (Quote-StreamImportArgument $apiBase)
   )
   $startInfo = New-Object Diagnostics.ProcessStartInfo
@@ -1369,12 +1369,12 @@ $rvpButton.Add_Click({
   if ($saveDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $saveDialog.Dispose(); return }
   $outputPath = $saveDialog.FileName
   $saveDialog.Dispose()
-  $downloadUrl = [Microsoft.VisualBasic.Interaction]::InputBox(
-    "Dán link HTTPS của chính file .rvp trên Google Drive. Link này sẽ được bot gửi sau thanh toán.",
-    "Link tải RVP", "https://drive.google.com/file/d/.../view?usp=sharing").Trim()
-  if (-not $downloadUrl) { return }
+  $driveFolder = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "Dán link hoặc ID folder Google Drive. Manager sẽ tự upload file .rvp vào folder này và lấy link chia sẻ.",
+    "Folder Drive chứa RVP", "https://drive.google.com/drive/folders/...").Trim()
+  if (-not $driveFolder) { return }
   try {
-    $startInfo = New-RvpPackStartInfo $sourceFolder $courseId ([string]$course.title) $outputPath $downloadUrl
+    $startInfo = New-RvpPackStartInfo $sourceFolder $courseId ([string]$course.title) $outputPath $driveFolder
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $startInfo
     if (-not $process.Start()) { throw "Không thể khởi chạy bộ đóng gói RVP." }
