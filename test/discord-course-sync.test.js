@@ -119,10 +119,11 @@ test("delivery tags are created once and merged without removing other tags", as
     },
   };
   const ids = await ensureDeliveryTags(rest, { id: "forum", available_tags: [{ id: "level", name: "Beginner" }] });
-  assert.equal(patchBody.available_tags.length, 4);
+  assert.equal(patchBody.available_tags.length, 5);
   assert.ok(ids.DRIVE);
   assert.ok(ids.STREAM);
   assert.ok(ids["NON-STREAM"]);
+  assert.ok(ids.RVP_DEVICE);
   const ready = {
     id: "a", published: true, rightsVerified: true, deliveryMode: "STREAM", driveFolderId: "", streamAvailable: true,
     lessons: [{ id: "lesson-1", title: "Lesson 1", published: true }],
@@ -130,6 +131,8 @@ test("delivery tags are created once and merged without removing other tags", as
   assert.deepEqual(mergeAppliedDeliveryTag(["level", ids["NON-STREAM"]], ids, ready), ["level", ids.STREAM]);
   const drive = { ...ready, deliveryMode: "DRIVE", streamAvailable: false, lessons: [], driveFolderId: "1AbCdEfGhIjKlMnOpQrStUvWxYz" };
   assert.deepEqual(mergeAppliedDeliveryTag(["level", ids.STREAM], ids, drive), ["level", ids.DRIVE]);
+  const rvp = { ...ready, deliveryMode: "RVP_DEVICE", streamAvailable: false, rvpAvailable: true, lessons: [] };
+  assert.deepEqual(mergeAppliedDeliveryTag(["level", ids.STREAM], ids, rvp), ["level", ids.RVP_DEVICE]);
   assert.equal(deliveryTagName({ ...ready, lessons: [] }), "NON-STREAM");
   assert.equal(deliveryTagName({ streamAvailable: false }), "NON-STREAM");
 });

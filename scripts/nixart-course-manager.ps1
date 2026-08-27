@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName Microsoft.VisualBasic
 
 $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $script:CatalogPath = Join-Path $script:RepoRoot "content\catalog.json"
@@ -27,6 +28,10 @@ $script:ImportProcess = $null
 $script:ImportStdoutTask = $null
 $script:ImportStderrTask = $null
 $script:ImportCourseId = ""
+$script:RvpProcess = $null
+$script:RvpStdoutTask = $null
+$script:RvpStderrTask = $null
+$script:RvpCourseId = ""
 
 function Get-CatalogSnapshot {
   param([string]$Path = $script:CatalogPath)
@@ -191,7 +196,7 @@ function Get-CourseDeliveryMode {
   param($Course)
 
   $mode = [string]$Course.deliveryMode
-  if (@("DRIVE", "STREAM", "NON-STREAM") -contains $mode) { return $mode }
+  if (@("DRIVE", "STREAM", "RVP_DEVICE", "NON-STREAM") -contains $mode) { return $mode }
   if (-not $mode -and $Course.streamAvailable -eq $true) { return "STREAM" }
   "NON-STREAM"
 }
@@ -254,7 +259,8 @@ function Get-CourseValidationError {
     [string]$DriveFolderValue,
     [string]$ImageUrl,
     [string]$PreviewUrl,
-    [bool]$FreeAccess = $false
+    [bool]$FreeAccess = $false,
+    [bool]$HasRvpPackage = $false
   )
 
   if ([string]::IsNullOrWhiteSpace($Title)) { return "Hãy nhập tên khóa học." }
@@ -264,13 +270,14 @@ function Get-CourseValidationError {
   if ([regex]::IsMatch($Description, "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u202A-\u202E\u2066-\u2069]")) { return "Mô tả chứa ký tự điều khiển hoặc đổi hướng chữ không hợp lệ." }
   if ($Price -lt 0 -or $Price -ne [decimal]::Truncate($Price)) { return "Giá phải là số nguyên không âm." }
   if (@("basic", "full") -notcontains $PlanTier) { return "Gói phải là basic hoặc full." }
-  if (@("NON-STREAM", "DRIVE", "STREAM") -notcontains $DeliveryMode) { return "Hình thức giao nội dung không hợp lệ." }
+  if (@("NON-STREAM", "DRIVE", "STREAM", "RVP_DEVICE") -notcontains $DeliveryMode) { return "Hình thức giao nội dung không hợp lệ." }
   if ($Published -and -not $RightsVerified) { return "Muốn công khai trên web, bạn phải xác nhận quyền phân phối khóa học." }
   if ($SaleEnabled -and -not $Published) { return "Muốn mở thanh toán, khóa học phải được công khai trên web." }
   if ($SaleEnabled -and -not $RightsVerified) { return "Muốn mở thanh toán, bạn phải xác nhận quyền phân phối khóa học." }
   if ($SaleEnabled -and $Price -le 0) { return "Muốn mở thanh toán, giá khóa học phải lớn hơn 0." }
   if ($SaleEnabled -and $DeliveryMode -eq "NON-STREAM") { return "Khóa NON-STREAM chưa có cách giao nội dung nên không thể mở thanh toán." }
   if ($SaleEnabled -and $DeliveryMode -eq "STREAM" -and -not $HasPublishedLesson) { return "Muốn mở thanh toán STREAM, khóa học phải có ít nhất một bài HLS đã published." }
+  if ($SaleEnabled -and $DeliveryMode -eq "RVP_DEVICE" -and -not $HasRvpPackage) { return "Muốn mở thanh toán RVP, hãy dùng nút ĐÓNG GÓI RVP trước." }
   if ($FreeAccess -and $SaleEnabled) { return "Khóa học miễn phí không thể đồng thời mở thanh toán." }
   if ($FreeAccess -and -not $Published) { return "Muốn chia sẻ miễn phí, khóa học phải được công khai trên web." }
   if ($FreeAccess -and -not $RightsVerified) { return "Muốn chia sẻ miễn phí, bạn phải xác nhận quyền phân phối khóa học." }
@@ -306,6 +313,7 @@ function Invoke-SelfTest {
   if ((Resolve-DriveFolderId $folderId) -ne $folderId -or (Resolve-DriveFolderId "https://example.com/drive/folders/$folderId")) { throw "Kiểm tra folder Drive thất bại" }
   if ((Get-CourseDeliveryMode ([pscustomobject]@{ streamAvailable = $true })) -ne "STREAM") { throw "Tương thích streamAvailable thất bại" }
   if ((Get-CourseDeliveryMode ([pscustomobject]@{ deliveryMode = "DRIVE"; streamAvailable = $false })) -ne "DRIVE") { throw "deliveryMode không được ưu tiên" }
+  if ((Get-CourseDeliveryMode ([pscustomobject]@{ deliveryMode = "RVP_DEVICE"; rvpAvailable = $true })) -ne "RVP_DEVICE") { throw "RVP_DEVICE không được nhận diện" }
   if (-not (Get-CourseValidationError "A" "" 100 "full" $false $true $false "NON-STREAM" $false "" "" "")) { throw "Kiểm tra quyền công khai thất bại" }
   if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "NON-STREAM" $false "" "" "")) { throw "Kiểm tra thanh toán NON-STREAM thất bại" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $false "STREAM" $false "" "" "") { throw "Draft STREAM không thể lưu" }
@@ -313,6 +321,8 @@ function Invoke-SelfTest {
   if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $false "DRIVE" $false "invalid" "" "")) { throw "Kiểm tra thư mục DRIVE thất bại" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "DRIVE" $false $folderId "" "") { throw "Khóa DRIVE hợp lệ không thể mở bán" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "") { throw "Khóa STREAM hợp lệ không thể mở bán" }
+  if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "RVP_DEVICE" $false "" "" "" $false $false)) { throw "Không chặn RVP chưa đóng gói" }
+  if (Get-CourseValidationError "A" "" 100 "full" $true $true $true "RVP_DEVICE" $false "" "" "" $false $true) { throw "RVP đã đóng gói không thể mở bán" }
   if (Get-CourseValidationError "A" "" 100 "full" $true $true $false "STREAM" $true "" "" "" $true) { throw "Khóa STREAM miễn phí hợp lệ không thể lưu" }
   if (-not (Get-CourseValidationError "A" "" 100 "full" $true $true $true "STREAM" $true "" "" "" $true)) { throw "Không chặn khóa vừa miễn phí vừa mở bán" }
   if (Get-CourseValidationError "A" "" 0 "full" $true $true $false "NON-STREAM" $false "" "" "") { throw "Khóa NON-STREAM hợp lệ không thể công khai" }
@@ -578,8 +588,8 @@ $listToolbar.Controls.Add($catalogSubtitle)
 
 $newButton = New-Object Windows.Forms.Button
 $newButton.Text = "+  KHÓA MỚI"
-$newButton.Size = New-Object Drawing.Size(128, 34)
-$newButton.Location = New-Object Drawing.Point(299, 12)
+$newButton.Size = New-Object Drawing.Size(105, 34)
+$newButton.Location = New-Object Drawing.Point(325, 12)
 $newButton.Anchor = "Top, Right"
 $newButton.FlatStyle = "Flat"
 $newButton.BackColor = $discord
@@ -590,8 +600,8 @@ $listToolbar.Controls.Add($newButton)
 
 $importButton = New-Object Windows.Forms.Button
 $importButton.Text = "NHẬP STREAM"
-$importButton.Size = New-Object Drawing.Size(120, 34)
-$importButton.Location = New-Object Drawing.Point(169, 12)
+$importButton.Size = New-Object Drawing.Size(105, 34)
+$importButton.Location = New-Object Drawing.Point(110, 12)
 $importButton.Anchor = "Top, Right"
 $importButton.FlatStyle = "Flat"
 $importButton.BackColor = $surface2
@@ -599,6 +609,18 @@ $importButton.ForeColor = $success
 $importButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.5)
 $importButton.FlatAppearance.BorderColor = $success
 $listToolbar.Controls.Add($importButton)
+
+$rvpButton = New-Object Windows.Forms.Button
+$rvpButton.Text = "ĐÓNG GÓI RVP"
+$rvpButton.Size = New-Object Drawing.Size(100, 34)
+$rvpButton.Location = New-Object Drawing.Point(220, 12)
+$rvpButton.Anchor = "Top, Right"
+$rvpButton.FlatStyle = "Flat"
+$rvpButton.BackColor = $surface2
+$rvpButton.ForeColor = $accent
+$rvpButton.Font = New-Object Drawing.Font("Segoe UI Semibold", 8.3)
+$rvpButton.FlatAppearance.BorderColor = $accent
+$listToolbar.Controls.Add($rvpButton)
 
 $deleteButton = New-Object Windows.Forms.Button
 $deleteButton.Text = "XÓA BÀI ĐĂNG"
@@ -806,7 +828,8 @@ $deliveryBox.ForeColor = $text
 [void]$deliveryBox.Items.AddRange(@(
   "NON-STREAM — chưa có cách giao nội dung",
   "DRIVE — thêm email vào thư mục Google Drive",
-  "STREAM — học trực tiếp trên web"
+  "STREAM — học trực tiếp trên web",
+  "RVP DEVICE — tải một file, khóa theo thiết bị"
 ))
 $deliveryBox.SelectedIndex = 0
 $editorBody.Controls.Add($deliveryBox)
@@ -834,7 +857,7 @@ $publishedBox.FlatStyle = "Flat"
 $editorBody.Controls.Add($publishedBox)
 
 $saleBox = New-Object Windows.Forms.CheckBox
-$saleBox.Text = "Mở thanh toán (cần DRIVE hợp lệ hoặc STREAM có bài)"
+$saleBox.Text = "Mở thanh toán (DRIVE / STREAM / RVP đã cấu hình)"
 $saleBox.AutoSize = $true
 $saleBox.Location = New-Object Drawing.Point(18, 468)
 $saleBox.FlatStyle = "Flat"
@@ -1094,6 +1117,49 @@ function New-StreamImportStartInfo {
   $startInfo
 }
 
+function Get-LocalConfigValue {
+  param([string]$Name)
+  $value = [Environment]::GetEnvironmentVariable($Name)
+  if ($value) { return $value }
+  $envPath = Join-Path $script:RepoRoot ".env"
+  if (-not [IO.File]::Exists($envPath)) { return "" }
+  foreach ($line in [IO.File]::ReadAllLines($envPath)) {
+    if ($line -match ('^\s*{0}\s*=\s*(.*)\s*$' -f [regex]::Escape($Name))) {
+      return $matches[1].Trim().Trim('"').Trim("'")
+    }
+  }
+  ""
+}
+
+function New-RvpPackStartInfo {
+  param([string]$Folder, [string]$CourseId, [string]$Title, [string]$OutputPath, [string]$DownloadUrl)
+  $token = Get-LocalConfigValue "RVP_ADMIN_TOKEN"
+  if ($token.Length -lt 32) { throw "Thiếu RVP_ADMIN_TOKEN trong biến môi trường hoặc file .env." }
+  $apiBase = Get-LocalConfigValue "PUBLIC_BASE_URL"
+  if (-not $apiBase) { $apiBase = "https://learn.nixart.io.vn" }
+  $scriptPath = Join-Path $script:RepoRoot "scripts\pack-rvp-course.ps1"
+  $arguments = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-StreamImportArgument $scriptPath),
+    '-SourceFolder', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($Folder))),
+    '-CourseId', $CourseId, '-Title', (Quote-StreamImportArgument $Title),
+    '-OutputPath', (Quote-StreamImportArgument ([IO.Path]::GetFullPath($OutputPath))),
+    '-DownloadUrl', (Quote-StreamImportArgument $DownloadUrl),
+    '-ApiBase', (Quote-StreamImportArgument $apiBase)
+  )
+  $startInfo = New-Object Diagnostics.ProcessStartInfo
+  $startInfo.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
+  $startInfo.Arguments = $arguments -join ' '
+  $startInfo.WorkingDirectory = $script:RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+  $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+  $startInfo.EnvironmentVariables["RVP_ADMIN_TOKEN"] = $token
+  $startInfo
+}
+
 function Get-StreamFolderPlan {
   param([string]$Folder, [string]$CourseId, [string]$Title, [bool]$PreferVietnamese, [bool]$ReuseExistingHls)
 
@@ -1156,6 +1222,7 @@ function Refresh-CourseList {
     $deliveryReady = switch ($deliveryMode) {
       "DRIVE" { [bool](Resolve-DriveFolderId (Get-PrivateDriveFolder ([string]$course.id))) }
       "STREAM" { $hasPublishedLesson }
+      "RVP_DEVICE" { $course.rvpAvailable -eq $true }
       default { $false }
     }
     $saleReady = $course.forumVisible -eq $true -and $course.published -eq $true -and $course.saleEnabled -eq $true -and $course.rightsVerified -eq $true -and
@@ -1199,7 +1266,7 @@ function Load-CourseIntoEditor {
   $priceBox.Value = $price
   $planBox.SelectedItem = if (@("basic", "full") -contains [string]$course.planTier) { [string]$course.planTier } else { "full" }
   $deliveryMode = Get-CourseDeliveryMode $course
-  $deliveryBox.SelectedIndex = switch ($deliveryMode) { "DRIVE" { 1 } "STREAM" { 2 } default { 0 } }
+  $deliveryBox.SelectedIndex = switch ($deliveryMode) { "DRIVE" { 1 } "STREAM" { 2 } "RVP_DEVICE" { 3 } default { 0 } }
   $driveFolderBox.Text = Get-PrivateDriveFolder ([string]$course.id)
   $rightsBox.Checked = $course.rightsVerified -eq $true
   $publishedBox.Checked = $course.published -eq $true
@@ -1209,6 +1276,37 @@ function Load-CourseIntoEditor {
   $saveButton.Text = "LƯU THAY ĐỔI"
   $deleteButton.Enabled = $true
 }
+
+$rvpTimer = New-Object Windows.Forms.Timer
+$rvpTimer.Interval = 500
+$rvpTimer.Add_Tick({
+  if ($null -eq $script:RvpProcess -or -not $script:RvpProcess.HasExited) { return }
+  $rvpTimer.Stop()
+  $stdout = $script:RvpStdoutTask.Result.Trim()
+  $stderr = $script:RvpStderrTask.Result.Trim()
+  $exitCode = $script:RvpProcess.ExitCode
+  $courseId = $script:RvpCourseId
+  $script:RvpProcess.Dispose()
+  $script:RvpProcess = $null
+  $script:RvpStdoutTask = $null
+  $script:RvpStderrTask = $null
+  $script:RvpCourseId = ""
+  $script:SyncRunning = $false
+  $listToolbar.Enabled = $true
+  $courseGrid.Enabled = $true
+  $editor.Enabled = $true
+  if ($stdout) { Write-Log $stdout }
+  if ($stderr) { Write-Log "LỖI RVP: $stderr" }
+  if ($exitCode -eq 0) {
+    Refresh-CourseList $courseId
+    Load-CourseIntoEditor $courseId
+    $statusLabel.Text = "RVP đã đóng gói và đăng ký server."
+    $statusLabel.ForeColor = $success
+  } else {
+    $statusLabel.Text = "Đóng gói RVP thất bại."
+    $statusLabel.ForeColor = $danger
+  }
+})
 
 $importTimer = New-Object Windows.Forms.Timer
 $importTimer.Interval = 500
@@ -1248,6 +1346,54 @@ $importTimer.Add_Tick({
 
 $newButton.Add_Click({ Clear-Editor })
 $cancelButton.Add_Click({ Clear-Editor })
+$rvpButton.Add_Click({
+  if ($script:SyncRunning) { return }
+  if ($courseGrid.SelectedRows.Count -ne 1) {
+    [Windows.Forms.MessageBox]::Show("Hãy tạo/lưu rồi chọn khóa học cần đóng gói.", "Đóng gói RVP", "OK", "Information") | Out-Null
+    return
+  }
+  $courseId = [string]$courseGrid.SelectedRows[0].Tag
+  $course = @($script:Catalog.courses) | Where-Object { [string]$_.id -ceq $courseId } | Select-Object -First 1
+  if ($null -eq $course) { return }
+  $folderPicker = New-Object Windows.Forms.FolderBrowserDialog
+  $folderPicker.Description = "Chọn folder chứa video và subtitle của khóa học"
+  $folderPicker.ShowNewFolderButton = $false
+  if ($folderPicker.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $folderPicker.Dispose(); return }
+  $sourceFolder = $folderPicker.SelectedPath
+  $folderPicker.Dispose()
+  $saveDialog = New-Object Windows.Forms.SaveFileDialog
+  $saveDialog.Title = "Lưu file RVP dùng chung để upload lên Drive"
+  $saveDialog.Filter = "Nixart course package (*.rvp)|*.rvp"
+  $saveDialog.FileName = "$courseId.rvp"
+  if ($saveDialog.ShowDialog($form) -ne [Windows.Forms.DialogResult]::OK) { $saveDialog.Dispose(); return }
+  $outputPath = $saveDialog.FileName
+  $saveDialog.Dispose()
+  $downloadUrl = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "Dán link HTTPS của chính file .rvp trên Google Drive. Link này sẽ được bot gửi sau thanh toán.",
+    "Link tải RVP", "https://drive.google.com/file/d/.../view?usp=sharing").Trim()
+  if (-not $downloadUrl) { return }
+  try {
+    $startInfo = New-RvpPackStartInfo $sourceFolder $courseId ([string]$course.title) $outputPath $downloadUrl
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw "Không thể khởi chạy bộ đóng gói RVP." }
+    $script:RvpProcess = $process
+    $script:RvpStdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $script:RvpStderrTask = $process.StandardError.ReadToEndAsync()
+    $script:RvpCourseId = $courseId
+    $script:SyncRunning = $true
+    $listToolbar.Enabled = $false
+    $courseGrid.Enabled = $false
+    $editor.Enabled = $false
+    $statusLabel.Text = "Đang mã hóa folder thành RVP..."
+    $statusLabel.ForeColor = $accent
+    Write-Log "Bắt đầu đóng gói RVP '$([string]$course.title)' ($courseId) -> $outputPath"
+    $rvpTimer.Start()
+  } catch {
+    [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Không thể đóng gói RVP", "OK", "Error") | Out-Null
+    Write-Log "LỖI RVP: $($_.Exception.Message)"
+  }
+})
 $importButton.Add_Click({
   if ($script:SyncRunning) { return }
 
@@ -2142,14 +2288,15 @@ $saveButton.Add_Click({
     $previewUrl = $previewUrlBox.Text.Trim()
     $price = [decimal]$priceBox.Value
     $planTier = [string]$planBox.SelectedItem
-    $deliveryMode = switch ($deliveryBox.SelectedIndex) { 1 { "DRIVE" } 2 { "STREAM" } default { "NON-STREAM" } }
+    $deliveryMode = switch ($deliveryBox.SelectedIndex) { 1 { "DRIVE" } 2 { "STREAM" } 3 { "RVP_DEVICE" } default { "NON-STREAM" } }
     $driveFolderValue = $driveFolderBox.Text.Trim()
     $driveFolderId = if ($deliveryMode -eq "DRIVE") { Resolve-DriveFolderId $driveFolderValue } else { "" }
     $editingCourse = if ($script:EditingCourseId) {
       @($script:Catalog.courses) | Where-Object { [string]$_.id -eq $script:EditingCourseId } | Select-Object -First 1
     } else { $null }
     $hasPublishedLesson = $null -ne $editingCourse -and @($editingCourse.lessons | Where-Object { $_.published -eq $true }).Count -gt 0
-    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $deliveryMode $hasPublishedLesson $driveFolderValue $imageUrl $previewUrl $freeBox.Checked
+    $hasRvpPackage = $null -ne $editingCourse -and $editingCourse.rvpAvailable -eq $true
+    $errorMessage = Get-CourseValidationError $title $description $price $planTier $rightsBox.Checked $publishedBox.Checked $saleBox.Checked $deliveryMode $hasPublishedLesson $driveFolderValue $imageUrl $previewUrl $freeBox.Checked $hasRvpPackage
     if ($errorMessage) {
       [Windows.Forms.MessageBox]::Show($errorMessage, "Dữ liệu chưa hợp lệ", "OK", "Warning") | Out-Null
       return
@@ -2201,6 +2348,7 @@ $saveButton.Add_Click({
     Set-CourseProperty $course "planTier" $planTier
     Set-CourseProperty $course "deliveryMode" $deliveryMode
     Set-CourseProperty $course "streamAvailable" ($deliveryMode -eq "STREAM")
+    if ($deliveryMode -ne "RVP_DEVICE") { Set-CourseProperty $course "rvpAvailable" $false }
     Set-CourseProperty $course "saleEnabled" ([bool]$saleBox.Checked)
     Set-CourseProperty $course "freeAccess" ([bool]$freeBox.Checked)
     Set-CourseProperty $course "forumVisible" $true

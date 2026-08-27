@@ -3,6 +3,7 @@ const { google } = require("googleapis");
 const { approveHlsOrder, ensureLearningTables, escapeDiscordMarkdown } = require("../../learning");
 const { approveGroupBuyOrder, ensureGroupBuyTables } = require("../../groupbuy");
 const { notifyGroupBuyApproved, notifyPaymentApproved } = require("../../discord-bot");
+const { approveRvpOrder } = require("../../rvp-license");
 
 let sqlClient;
 function db() {
@@ -101,14 +102,14 @@ async function claimOrder(sql, purchaseCode, amount, reference) {
   await sql`
     UPDATE purchase_orders
     SET status = 'expired'
-    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive') AND status = 'pending'
+    WHERE purchase_code = ${purchaseCode} AND delivery_type IN ('hls', 'drive', 'rvp') AND status = 'pending'
       AND created_at <= NOW() - INTERVAL '30 minutes'
   `;
   const rows = await sql`
     UPDATE purchase_orders
     SET status = 'processing', transfer_reference = ${reference}
     WHERE purchase_code = ${purchaseCode} AND status IN ('pending', 'paid') AND amount = ${amount}
-      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive') OR created_at > NOW() - INTERVAL '30 minutes')
+      AND (status = 'paid' OR delivery_type NOT IN ('hls', 'drive', 'rvp') OR created_at > NOW() - INTERVAL '30 minutes')
     RETURNING id, course_id, course_title, drive_folder_id, email, delivery_type, discord_id, access_scope, access_days
   `;
   return rows[0];
@@ -183,6 +184,21 @@ exports.handler = async (event) => {
         .then(() => sql`UPDATE purchase_orders SET discord_notified_at = NOW() WHERE id = ${order.id}`)
         .catch(error => console.error("sepay buyer notification error", error));
       return json(200, { success: true, status: "approved" });
+    }
+
+    if (order.delivery_type === "rvp") {
+      try {
+        const approved = await approveRvpOrder(order, sql);
+        await sql`UPDATE sepay_transactions SET match_status = 'approved' WHERE id = ${transactionId}`;
+        await notifyPaymentApproved(approved)
+          .then(() => sql`UPDATE purchase_orders SET discord_notified_at = NOW() WHERE id = ${order.id}`)
+          .catch(error => console.error("sepay RVP buyer notification error", error));
+        return json(200, { success: true, status: "approved", type: "rvp" });
+      } catch (error) {
+        await sql`UPDATE purchase_orders SET status = 'paid', paid_at = COALESCE(paid_at, NOW()) WHERE id = ${order.id}`;
+        await sql`UPDATE sepay_transactions SET match_status = 'rvp_failed' WHERE id = ${transactionId}`;
+        throw error;
+      }
     }
 
     if (order.delivery_type === "manual") {

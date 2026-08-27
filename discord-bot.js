@@ -33,6 +33,7 @@ const {
   isForumCourseSaleReady,
   markDiscordPaymentNotified
 } = require("./learning");
+const { accessCode } = require("./rvp-license");
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
   attachGroupBuyMessage,
@@ -91,6 +92,20 @@ function appUrl(courseId, lessonId) {
 }
 
 function paymentApprovedMessage(order, catalog = getCatalog()) {
+  if (order.delivery_type === "rvp") {
+    let downloadUrl;
+    try { downloadUrl = new URL(String(order.rvp_download_url || "")); }
+    catch { return null; }
+    if (downloadUrl.protocol !== "https:" || downloadUrl.username || downloadUrl.password) return null;
+    const code = String(order.access_code || accessCode(order));
+    return {
+      content: `✅ **Thanh toán thành công**\nKhóa học **${escapeDiscordMarkdown(order.course_title)}** đã sẵn sàng.\n\nMã kích hoạt một thiết bị: \`${code}\`\nTải file \`.rvp\`, mở bằng Nixart Player rồi nhập mã trên.`,
+      components: [new ActionRowBuilder().addComponents(new ButtonBuilder()
+        .setLabel("Tải khóa học .rvp")
+        .setStyle(ButtonStyle.Link)
+        .setURL(downloadUrl.href))]
+    };
+  }
   const courses = (catalog.courses || []).filter(isCourseContentReady);
   if (order.access_scope === "course") {
     const course = courses.find(item => item.id === order.course_id);
@@ -348,6 +363,8 @@ async function renderPaymentReply(interaction, order) {
     .setFooter({
       text: order.deliveryType === "drive"
         ? "Chuyển đúng nội dung. SePay xác nhận xong, email trên sẽ được thêm vào thư mục Drive."
+        : order.deliveryType === "rvp"
+          ? "Chuyển đúng nội dung. SePay xác nhận xong, bot sẽ gửi mã một lần và link tải .rvp."
         : order.deliveryType === "groupbuy"
           ? "Đơn GroupBuy không hết hạn. Mỗi lần góp tạo một mã riêng; SePay xác nhận xong bot sẽ cộng một suất."
         : order.scope !== "course"

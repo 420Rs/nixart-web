@@ -40,6 +40,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/player/redeem"
+  to = "/.netlify/functions/player-redeem"
+  status = 200
+
+[[redirects]]
+  from = "/api/player/admin-course"
+  to = "/.netlify/functions/player-admin-course"
+  status = 200
+
+[[redirects]]
   from = "/api/auth"
   to = "/.netlify/functions/auth"
   status = 200

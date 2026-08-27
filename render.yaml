@@ -21,3 +21,7 @@ services:
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
+      - key: RVP_LICENSE_SECRET
+        sync: false
+      - key: RVP_ADMIN_TOKEN
+        sync: false

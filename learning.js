@@ -3,9 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { neon } = require("@neondatabase/serverless");
 const { ensureAuthTables } = require("./netlify/functions/lib/auth");
+const { ensureRvpTables } = require("./rvp-license");
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
-const DELIVERY_MODES = Object.freeze(["DRIVE", "STREAM", "NON-STREAM"]);
+const DELIVERY_MODES = Object.freeze(["DRIVE", "STREAM", "RVP_DEVICE", "NON-STREAM"]);
 const DRIVE_FOLDER_ID_RE = /^[a-zA-Z0-9_-]{10,200}$/;
 const CATALOG_PATH = path.join(__dirname, "content", "catalog.json");
 const DELIVERY_CONFIG_PATH = path.join(__dirname, "content", "delivery.private.json");
@@ -53,6 +54,7 @@ function validCatalog(catalog) {
       && ["basic", "full"].includes(item.planTier)
       && ["published", "forumVisible", "rightsVerified", "streamAvailable", "saleEnabled"].every(field => typeof item[field] === "boolean")
       && (item.freeAccess === undefined || typeof item.freeAccess === "boolean")
+      && (item.rvpAvailable === undefined || typeof item.rvpAvailable === "boolean")
       && !(item.freeAccess === true && item.saleEnabled === true)
       && (item.deliveryMode === undefined || DELIVERY_MODES.includes(item.deliveryMode))
       && (item.deliveryMode === undefined || item.streamAvailable === (item.deliveryMode === "STREAM"))
@@ -138,15 +140,20 @@ function isDriveCourseReady(course) {
   return isCourseListed(course) && courseDeliveryMode(course) === "DRIVE" && Boolean(driveFolderId(course?.driveFolderId));
 }
 
+function isRvpCourseReady(course) {
+  return isCourseListed(course) && courseDeliveryMode(course) === "RVP_DEVICE" && course?.rvpAvailable === true;
+}
+
 function effectiveDeliveryMode(course) {
   if (isDriveCourseReady(course)) return "DRIVE";
   if (isCourseContentReady(course)) return "STREAM";
+  if (isRvpCourseReady(course)) return "RVP_DEVICE";
   return "NON-STREAM";
 }
 
 function isCourseSaleReady(course) {
   return course?.freeAccess !== true && course?.saleEnabled === true && Number.isSafeInteger(course?.price) && course.price > 0
-    && ["DRIVE", "STREAM"].includes(effectiveDeliveryMode(course));
+    && ["DRIVE", "STREAM", "RVP_DEVICE"].includes(effectiveDeliveryMode(course));
 }
 
 function isForumCourseSaleReady(course) {
@@ -269,6 +276,12 @@ async function ensureLearningTables() {
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_user_access_idx ON purchase_orders (auth_user_id, status, access_scope, access_expires_at)`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_verified_email_idx ON purchase_orders (LOWER(email)) WHERE delivery_type = 'hls' AND status = 'approved'`;
     await sql`CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders (status, created_at DESC)`;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS purchase_orders_one_active_rvp_idx
+      ON purchase_orders (discord_id, course_id)
+      WHERE delivery_type = 'rvp' AND order_origin = 'discord' AND discord_id IS NOT NULL
+        AND status IN ('pending', 'processing', 'paid', 'approved')
+    `;
     await sql`
       UPDATE purchase_orders
       SET status = 'expired'
@@ -449,10 +462,13 @@ async function getEntitlements(discordId) {
 async function getPendingDiscordPaymentNotifications(sqlOverride) {
   if (!sqlOverride) await ensureLearningTables();
   const sql = sqlOverride || db();
+  if (!sqlOverride) await ensureRvpTables(sql);
   return sql`
-    SELECT id, course_id, course_title, discord_id, access_scope
-    FROM purchase_orders
-    WHERE delivery_type = 'hls' AND status = 'approved' AND order_origin = 'discord'
+    SELECT purchase.id, purchase.course_id, purchase.course_title, purchase.discord_id,
+           purchase.access_scope, purchase.delivery_type, rvp.download_url AS rvp_download_url
+    FROM purchase_orders purchase
+    LEFT JOIN rvp_courses rvp ON rvp.course_id = purchase.course_id
+    WHERE purchase.delivery_type IN ('hls', 'rvp') AND purchase.status = 'approved' AND purchase.order_origin = 'discord'
       AND discord_notified_at IS NULL AND paid_at >= NOW() - INTERVAL '24 hours'
     ORDER BY paid_at ASC
     LIMIT 50
@@ -466,7 +482,7 @@ async function markDiscordPaymentNotified(orderId, sqlOverride) {
   const sql = sqlOverride || db();
   await sql`
     UPDATE purchase_orders SET discord_notified_at = NOW()
-    WHERE id = ${id}::uuid AND delivery_type = 'hls' AND status = 'approved'
+    WHERE id = ${id}::uuid AND delivery_type IN ('hls', 'rvp') AND status = 'approved'
       AND order_origin = 'discord' AND discord_notified_at IS NULL
   `;
 }
@@ -801,7 +817,7 @@ function productFor(scope, value) {
       amount: Number(course.price),
       scope: "course",
       days: null,
-      deliveryType: mode === "DRIVE" ? "drive" : "hls",
+      deliveryType: mode === "DRIVE" ? "drive" : mode === "RVP_DEVICE" ? "rvp" : "hls",
       driveFolderId: mode === "DRIVE" ? driveFolderId(course.driveFolderId) : ""
     };
   }
@@ -1111,6 +1127,7 @@ module.exports = {
   hasCourseAccess,
   isCourseContentReady,
   isDriveCourseReady,
+  isRvpCourseReady,
   isCourseListed,
   isCourseSaleReady,
   isForumCourseSaleReady,

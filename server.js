@@ -19,6 +19,8 @@ const handlers = {
   "/api/traffic": "./netlify/functions/traffic",
   "/api/orders": "./netlify/functions/orders",
   "/api/sepay": "./netlify/functions/sepay",
+  "/api/player/redeem": "./netlify/functions/player-redeem",
+  "/api/player/admin-course": "./netlify/functions/player-admin-course",
   "/review": "./netlify/functions/review"
 };
 
