@@ -140,6 +140,20 @@ async function approveRvpOrder(order, sqlOverride) {
   return { ...order, delivery_type: "rvp", access_code: code, rvp_download_url: String(courseRows[0]?.download_url || "") };
 }
 
+async function reissueAccessCode(order, sqlOverride) {
+  await ensureRvpTables(sqlOverride);
+  const sql = sqlOverride || db();
+  const code = accessCode(order);
+  const rows = await sql`
+    UPDATE rvp_access_codes
+    SET code_hash = ${codeHash(code)}
+    WHERE order_id = ${String(order.id)}::uuid AND device_id IS NULL
+    RETURNING order_id
+  `;
+  if (!rows.length) throw new Error("RVP code cannot be issued for this order");
+  return code;
+}
+
 function pairing(input) {
   const deviceId = String(input.device_id || "").trim().toLowerCase();
   if (!DEVICE_ID_RE.test(deviceId)) throw new Error("Invalid device id");
@@ -189,4 +203,4 @@ async function redeem(input, sqlOverride) {
   };
 }
 
-module.exports = { accessCode, approveRvpOrder, codeHash, courseRegistration, ensureRvpTables, pairing, redeem, registerCourse };
+module.exports = { accessCode, approveRvpOrder, codeHash, courseRegistration, ensureRvpTables, pairing, redeem, registerCourse, reissueAccessCode };

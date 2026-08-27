@@ -33,7 +33,7 @@ const {
   isForumCourseSaleReady,
   markDiscordPaymentNotified
 } = require("./learning");
-const { accessCode } = require("./rvp-license");
+const { accessCode, reissueAccessCode } = require("./rvp-license");
 const {
   DEFAULT_GROUPBUY_CHANNEL_ID,
   attachGroupBuyMessage,
@@ -195,7 +195,10 @@ async function notifyGroupBuyApproved(order) {
 
 async function notifyPaymentApproved(order) {
   if (!client?.isReady()) throw new Error("Discord bot is not ready");
-  const message = paymentApprovedMessage(order);
+  const notifiedOrder = order.delivery_type === "rvp"
+    ? { ...order, access_code: await reissueAccessCode(order) }
+    : order;
+  const message = paymentApprovedMessage(notifiedOrder);
   if (!message) throw new Error(`Course is unavailable after payment: ${order.course_id}`);
   const user = await client.users.fetch(String(order.discord_id));
   await user.send(message);
