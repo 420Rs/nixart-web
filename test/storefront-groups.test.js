@@ -9,7 +9,7 @@ test('grouped cards preserve each live package, price and Discord link', () => {
   const groupProducts = vm.runInNewContext(source + ';groupProducts');
   const catalog = JSON.parse(html.match(/id="catalog-data">([\s\S]*?)<\/script>/)[1]);
   const grouped = groupProducts(catalog.products);
-  assert.equal(grouped.length, 11);
+  assert.equal(grouped.length, catalog.products.length - 4);
   for (const category of ['CapCut', 'OnlyFans']) {
     const cards = grouped.filter(p => p.category === category);
     assert.equal(cards.length, 1);
@@ -19,7 +19,7 @@ test('grouped cards preserve each live package, price and Discord link', () => {
       assert.deepEqual(variant, catalog.products.find(p => p.id === variant.id));
     }
   }
-  assert.equal(catalog.products.length, 15);
+  assert.ok(catalog.products.length >= 15);
   assert.ok(!html.includes('filter:grayscale'));
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
 });

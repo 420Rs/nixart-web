@@ -4,7 +4,7 @@ const DISCORD = /^https:\/\/discord\.com\/channels\/\d{17,20}\/\d{17,20}$/;
 let cached, expires = 0;
 
 function groupFor(category) {
-  if (['Google AI', 'ChatGPT', 'Claude', 'Tripo 3D'].includes(category)) return 'AI';
+  if (['Google AI', 'ChatGPT', 'Claude', 'Claude API', 'Tripo 3D'].includes(category)) return 'AI';
   if (['Adobe', 'Canva', 'CapCut'].includes(category)) return 'Sáng tạo';
   if (category === 'Duolingo') return 'Học tập';
   if (category === 'Dịch vụ web') return 'Dịch vụ';
