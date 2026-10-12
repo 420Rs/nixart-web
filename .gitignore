@@ -9,3 +9,7 @@ content/catalog.json.hls-backup
 content/.catalog.json.*.tmp
 content/delivery.private.json*
 content/.delivery.private.json.*.tmp
+
+# Purchase-only setup instructions are deployed privately to the bot runtime.
+deploy/claude-api-delivery.js
+test/claude-api-delivery.test.js

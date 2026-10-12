@@ -1,0 +1,3 @@
+Private paid-order delivery guide: deploy/claude-api-delivery.js is intentionally kept out of the public repository. Deploy it as claude-api-delivery.js at the bot runtime root, upload scripts/patch-host-claude-api.js, run the patch from that root and restart. The patch attaches the product's instructions only to the existing paid-order delivery DM; public catalog descriptions and Discord posts contain no setup values.
+
+The Claude API product uses the existing encrypted stock / manual delivery path. Supplier keys must be entered through the shop's private inventory form or the paid order's delivery form. No supplier key has been purchased, stored or sent by this launch task.
