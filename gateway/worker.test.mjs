@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './worker.mjs';
+import { runInNewContext } from 'node:vm';
 
 test('credit lookup uses a fixed authenticated read endpoint and exact credit units', async t => {
   let calls = 0, incoming, options;
@@ -39,16 +40,66 @@ test('credit errors conceal provider details, redirects and malformed responses'
   assert.equal((await worker.fetch(request())).status, 502);
 });
 
-test('credit page keeps key out of URL and persistent browser storage', async () => {
+test('credit page keeps key out of URL and cookies', async () => {
   const page = await worker.fetch(new Request('https://api.nixart.io.vn/key'));
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-security-policy'), /connect-src 'self'/);
   assert.match(await page.text(), /type="password"/);
   const script = await (await worker.fetch(new Request('https://api.nixart.io.vn/key/app.js'))).text();
-  assert.doesNotMatch(script, /localStorage|sessionStorage|document.cookie|bddevlab/);
+  assert.doesNotMatch(script, /sessionStorage|document.cookie|bddevlab/);
   assert.match(script, /Authorization: 'Bearer ' \+ key/);
   assert.match(script, /pagehide/);
   new Function(script);
+});
+
+test('remembered keys survive reload, opt-out and clear remove them; bar handles limits', async () => {
+  const script = await (await worker.fetch(new Request('https://api.nixart.io.vn/key/app.js'))).text();
+  const storage = new Map();
+  let usage = { remaining: 225, granted: 450, used: 225, unlimited: false, expiresAt: 0 }, calls = 0;
+  const browser = () => {
+    const elements = new Map();
+    const element = id => {
+      if (!elements.has(id)) elements.set(id, { value: '', checked: true, hidden: true, handlers: {}, addEventListener(name, fn) { this.handlers[name] = fn; }, setAttribute() {}, focus() {} });
+      return elements.get(id);
+    };
+    runInNewContext(script, {
+      document: { getElementById: element, hidden: false }, window: { addEventListener() {} },
+      localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
+      fetch: async (_url, options) => { calls++; assert.match(options.headers.Authorization, /^Bearer fixture-key$/); return Response.json(usage); },
+      AbortController, setTimeout, clearTimeout, setInterval() {}, Intl, Date,
+    });
+    return element;
+  };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  let ui = browser();
+  ui('key').value = 'fixture-key';
+  ui('lookup').handlers.submit({ preventDefault() {} });
+  await settle();
+  assert.equal(ui('credit-bar').value, 50);
+  assert.equal(ui('percentage').textContent, '50%');
+  assert.equal(storage.get('nixart.credit.apiKey'), 'fixture-key');
+  ui = browser(); await settle();
+  assert.equal(ui('key').value, 'fixture-key');
+  assert.equal(ui('result').hidden, false);
+  assert.equal(calls, 2);
+  ui('remember').checked = false; ui('remember').handlers.change();
+  assert.equal(storage.has('nixart.credit.apiKey'), false);
+  ui = browser(); await settle();
+  assert.equal(ui('remember').checked, false);
+  assert.equal(ui('key').value, ''); assert.equal(calls, 2);
+  ui('key').value = 'fixture-key'; ui('remember').checked = true;
+  usage = { ...usage, remaining: -2 };
+  ui('lookup').handlers.submit({ preventDefault() {} }); await settle();
+  assert.equal(ui('credit-bar').value, 0);
+  ui('clear').handlers.click();
+  assert.equal(storage.has('nixart.credit.apiKey'), false);
+  assert.equal(ui('key').value, ''); assert.equal(ui('result').hidden, true);
+  usage = { ...usage, unlimited: true };
+  ui('key').value = 'fixture-key'; ui('lookup').handlers.submit({ preventDefault() {} }); await settle();
+  assert.equal(ui('credit-bar').hidden, true); assert.equal(ui('percentage').textContent, 'Không giới hạn');
+  usage = { ...usage, unlimited: false, granted: 0 };
+  ui('lookup').handlers.submit({ preventDefault() {} }); await settle();
+  assert.equal(ui('credit-bar').hidden, true); assert.equal(ui('percentage').textContent, 'Chưa có hạn mức');
 });
 
 test('individual keys and Messages stream pass through; no anonymous calls or credential redirects', async t => {
