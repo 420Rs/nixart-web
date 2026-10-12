@@ -1,0 +1,13 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "REPLACE_WITH_CUSTOMERS_OWN_PROVIDER_KEY",
+    "ANTHROPIC_BASE_URL": "https://nixart-api.nik-graphics99.workers.dev",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5[1m]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4.5"
+  },
+  "model": "opus",
+  "autoCompactEnabled": true,
+  "alwaysThinkingEnabled": true,
+  "theme": "dark"
+}

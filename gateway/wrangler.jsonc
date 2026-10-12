@@ -1,0 +1,9 @@
+{
+  "name": "nixart-api",
+  "account_id": "116c15ac5ab37cec6d6a666263767592",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-12",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false }
+}
