@@ -355,9 +355,9 @@
     const sortSelect = document.getElementById('price-sort');
     const filterButtons = document.querySelectorAll('.category-btn');
     const gridContainer = document.getElementById('catalog-container');
-    
+
     if (!gridContainer) return;
-    
+
     let currentCategory = 'all';
     let currentSearch = '';
 
@@ -403,7 +403,7 @@
           b.className = 'category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors';
         });
         btn.className = 'category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm font-medium transition-colors bg-text-primary text-surface-deep';
-        
+
         currentCategory = btn.getAttribute('data-category') || 'all';
         applyFilterAndSort();
       });
