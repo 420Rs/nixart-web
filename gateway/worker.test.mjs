@@ -3,6 +3,56 @@ import assert from 'node:assert/strict';
 import worker from './worker.mjs';
 import { runInNewContext } from 'node:vm';
 
+test('model failures and vendor HTTP errors become branded errors without changing status', async t => {
+  const request = () => new Request('https://api.nixart.io.vn/v1/messages', { method: 'POST', body: '{}', headers: { Authorization: 'Bearer fixture-key' } });
+  const cases = [
+    [503, { error: { message: 'No available channel for model bad-model. Contact admin bddevlab https://api.bddevlab.online/key', code: 'model_not_found' } }, 'invalid_request_error', /\/model/],
+    [503, { error: { message: 'Unavailable, contact bddevlab admin' } }, 'overloaded_error', /tạm thời/],
+    [401, { error: { type: 'authentication_error', message: 'bddevlab invalid private-key' } }, 'authentication_error', /key/],
+    [429, { error: { message: 'bddevlab limited' } }, 'rate_limit_error', /tần suất/],
+    [400, { error: { message: 'bddevlab invalid request private-value' } }, 'invalid_request_error', /cấu hình/],
+    [400, { error: { message: 'prompt is too long: 600000 exceeds 200000 bddevlab' } }, 'invalid_request_error', /prompt is too long.*\/compact/],
+    [500, '<html>contact admin bddevlab private-key</html>', 'api_error', /NIXART/],
+  ];
+  for (const [status, payload, type, message] of cases) {
+    t.mock.method(globalThis, 'fetch', async () => typeof payload === 'string' ? new Response(payload, { status }) : Response.json(payload, { status, headers: { 'Retry-After': '5' } }));
+    const response = await worker.fetch(request()), text = await response.text(), data = JSON.parse(text);
+    assert.equal(response.status, status);
+    assert.equal(data.type, 'error'); assert.equal(data.error.type, type); assert.match(data.error.message, message);
+    assert.doesNotMatch(text, /bddevlab|private-key|private-value|bad-model|https:\/\//);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    if (typeof payload !== 'string') assert.equal(response.headers.get('retry-after'), '5');
+  }
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ type: 'message', content: [{ type: 'text', text: 'Normal answer' }] }));
+  assert.deepEqual(await (await worker.fetch(request())).json(), { type: 'message', content: [{ type: 'text', text: 'Normal answer' }] });
+});
+
+test('SSE error events are sanitized across byte splits while tool and thinking frames stay intact', async t => {
+  const normal = 'event: content_block_delta\r\ndata: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Tiếng Việt 🐱"}}\r\n\r\n'
+    + 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\\"test\\":true}"}}\n\n';
+  const vendorError = 'event: error\r\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Contact bddevlab admin https://api.bddevlab.online"},"vendor":"private metadata"}\r\n\r\n';
+  const bytes = new TextEncoder().encode(normal + vendorError);
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    start(controller) { for (let i = 0; i < bytes.length; i += 3) controller.enqueue(bytes.slice(i, i + 3)); controller.close(); },
+  }), { headers: { 'Content-Type': 'text/event-stream', 'Content-Length': String(bytes.length) } }));
+  const response = await worker.fetch(new Request('https://api.nixart.io.vn/v1/messages', { method: 'POST', body: '{}', headers: { Authorization: 'Bearer fixture-key' } }));
+  assert.equal(response.headers.has('content-length'), false);
+  const text = await response.text();
+  assert.equal(text.slice(0, normal.length), normal);
+  assert.doesNotMatch(text, /bddevlab|private metadata|api\.bddevlab/);
+  assert.match(text, /event: error\ndata: .*overloaded_error.*NIXART/);
+});
+
+test('malformed and unnamed SSE errors never expose raw vendor text', async t => {
+  for (const event of ['event: error\ndata: contact bddevlab admin\n\n',
+    'data: {"error":{"message":"Unknown model. Contact bddevlab","code":"model_not_found"}}\n\n']) {
+    t.mock.method(globalThis, 'fetch', async () => new Response(event, { headers: { 'Content-Type': 'text/event-stream' } }));
+    const response = await worker.fetch(new Request('https://api.nixart.io.vn/v1/models', { headers: { Authorization: 'Bearer fixture-key' } }));
+    const text = await response.text();
+    assert.doesNotMatch(text, /bddevlab/); assert.match(text, /event: error/); assert.match(text, /NIXART/);
+  }
+});
+
 test('credit lookup uses a fixed authenticated read endpoint and exact credit units', async t => {
   let calls = 0, incoming, options;
   const quota = { total_granted: 45000000, total_available: 23312345, total_used: 21687655, unlimited_quota: false, expires_at: 0, name: 'private customer', secret: 'must not return' };

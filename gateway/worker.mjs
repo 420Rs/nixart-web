@@ -109,6 +109,75 @@ const error = (status, type, message) => Response.json(
   { status, headers: securityHeaders },
 );
 
+function customerError(status, payload) {
+  const detail = typeof payload === 'string' ? payload : [payload?.error?.message, payload?.error?.code, payload?.message].filter(value => typeof value === 'string').join(' ');
+  const reportedType = payload?.error?.type;
+  if (status === 401 || reportedType === 'authentication_error') return { type: 'authentication_error', message: 'API key không hợp lệ, đã hết hạn hoặc không còn dùng được. Liên hệ NIXART để kiểm tra.' };
+  if (status === 403 || reportedType === 'permission_error') return { type: 'permission_error', message: 'Key không có quyền sử dụng yêu cầu này. Liên hệ NIXART để kiểm tra.' };
+  if (/insufficient[_ ]?(quota|credit|balance)|quota.*(exhaust|exceed)|credit.*(exhaust|insufficient)|số dư.*không đủ|hết credit/i.test(detail)) return { type: 'permission_error', message: 'Credit hoặc hạn mức của key không đủ cho yêu cầu này. Kiểm tra số dư tại trang credit NIXART.' };
+  if (/model[_ -](not[_ -]found|not[_ -]supported|unavailable)|(?:invalid|unknown|unsupported|unavailable)\s+model|model.{0,100}(?:not found|not supported|does not exist|not available|unavailable)|no available (?:channel|provider).{0,100}model|model.{0,100}không (?:hợp lệ|khả dụng|được hỗ trợ)/i.test(detail)) return { type: 'invalid_request_error', message: 'Model này không khả dụng cho yêu cầu hoặc key hiện tại. Dùng /model để chọn model khác; kiểm tra tên model trong settings.json. Cần hỗ trợ: NIXART.' };
+  if (status === 429 || reportedType === 'rate_limit_error') return { type: 'rate_limit_error', message: 'Đã chạm giới hạn tần suất sử dụng. Chờ một lúc rồi thử lại; cần hỗ trợ thì liên hệ NIXART.' };
+  if (status === 413 || reportedType === 'request_too_large') return { type: 'request_too_large', message: 'Yêu cầu quá lớn. Rút ngắn nội dung hoặc tệp đính kèm rồi thử lại.' };
+  if (/prompt is too long|context (?:length|window).{0,80}(?:exceed|limit)|maximum context length/i.test(detail)) return { type: 'invalid_request_error', message: 'prompt is too long: Nội dung vượt giới hạn ngữ cảnh của model. Dùng /compact hoặc rút ngắn nội dung rồi thử lại. Cần hỗ trợ: NIXART.' };
+  if (status === 400 || reportedType === 'invalid_request_error') return { type: 'invalid_request_error', message: 'Yêu cầu không hợp lệ. Kiểm tra tên model, cấu hình và độ dài nội dung. Cần hỗ trợ: NIXART.' };
+  if (status === 404 || reportedType === 'not_found_error') return { type: 'not_found_error', message: 'Không tìm thấy model hoặc tài nguyên được yêu cầu. Kiểm tra tên model và cấu hình; cần hỗ trợ thì liên hệ NIXART.' };
+  if (status === 503 || status === 529 || reportedType === 'overloaded_error') return { type: 'overloaded_error', message: 'Dịch vụ đang tạm thời bận hoặc không khả dụng. Thử lại sau hoặc chọn model khác bằng /model. Nếu lỗi tiếp diễn, liên hệ NIXART.' };
+  return { type: 'api_error', message: 'Chưa thể xử lý yêu cầu. Thử lại sau; nếu lỗi tiếp diễn, liên hệ NIXART.' };
+}
+async function customerHttpError(upstream) {
+  // Read only a bounded error body. Never return raw vendor text, HTML or metadata.
+  const reader = upstream.body?.getReader(), decoder = new TextDecoder();
+  let text = '', size = 0;
+  try {
+    if (reader) while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 65536) { await reader.cancel(); break; }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch { /* A truncated error still becomes a safe NIXART response. */ }
+  let payload = text;
+  try { payload = JSON.parse(text); } catch {}
+  const safe = customerError(upstream.status, payload);
+  const response = error(upstream.status, safe.type, safe.message);
+  const retry = upstream.headers.get('retry-after');
+  if (retry && (/^\d+$/.test(retry) || Number.isFinite(Date.parse(retry)))) response.headers.set('Retry-After', retry);
+  return response;
+}
+function customerStream(body) {
+  if (!body) return body;
+  const decoder = new TextDecoder(), encoder = new TextEncoder();
+  let pending = '';
+  const rewrite = frame => {
+    const lines = frame.split(/\r\n|\r|\n/);
+    const namedError = lines.some(line => /^event:\s*error\s*$/.test(line));
+    const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).replace(/^ /, '')).join('\n');
+    let payload;
+    try { payload = JSON.parse(data); } catch { if (!namedError) return frame; payload = data; }
+    if (!namedError && payload?.type !== 'error' && !(payload?.error && !payload?.type)) return frame;
+    return 'event: error\ndata: ' + JSON.stringify({ type: 'error', error: customerError(500, payload) }) + '\n\n';
+  };
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      pending += decoder.decode(chunk, { stream: true });
+      let separator;
+      while ((separator = /\r\n\r\n|\r\n\n|\n\r\n|\n\n|\r\r/.exec(pending))) {
+        const end = separator.index + separator[0].length;
+        controller.enqueue(encoder.encode(rewrite(pending.slice(0, end))));
+        pending = pending.slice(end);
+      }
+      // Bound buffering to one event, not the complete model response.
+      if (pending.length > 1048576) {
+        controller.enqueue(encoder.encode('event: error\ndata: ' + JSON.stringify({ type: 'error', error: customerError(500, null) }) + '\n\n'));
+        controller.terminate();
+      }
+    },
+    flush(controller) { pending += decoder.decode(); if (pending) controller.enqueue(encoder.encode(rewrite(pending))); },
+  }));
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
@@ -146,13 +215,16 @@ export default {
         await upstream.body?.cancel();
         return error(502, 'api_error', 'Upstream endpoint redirected; contact NIXART.');
       }
+      if (!upstream.ok) return customerHttpError(upstream);
       const responseHeaders = new Headers(upstream.headers);
       responseHeaders.delete('set-cookie');
       responseHeaders.delete('location');
       responseHeaders.set('Cache-Control', 'no-store');
       responseHeaders.set('X-Content-Type-Options', 'nosniff');
-      // Relay SSE directly, including pings, tool calls, thinking and usage events.
-      return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+      const streaming = /^text\/event-stream\b/i.test(upstream.headers.get('Content-Type') || '');
+      if (streaming) { responseHeaders.delete('content-length'); responseHeaders.delete('content-encoding'); }
+      // Preserve normal SSE events, tools and thinking; rewrite only error events.
+      return new Response(streaming ? customerStream(upstream.body) : upstream.body, { status: upstream.status, headers: responseHeaders });
     } catch {
       return error(502, 'api_error', 'Upstream unavailable; retry later.');
     }
