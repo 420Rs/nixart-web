@@ -1,0 +1,12 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const source = path.join(root, 'design', 'stitch-export.html');
+const html = fs.readFileSync(source, 'utf8');
+const blocks = [...html.matchAll(/<(header|main|footer)\b[\s\S]*?<\/\1>/g)].map(m => m[0]);
+if (blocks.length === 3) fs.writeFileSync(source, '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Stitch source — NIXART</title></head><body>' + blocks.join('\n') + '</body></html>');
+const data = JSON.parse(fs.readFileSync(path.join(root, 'design', 'public-catalog.json'), 'utf8'));
+const index = path.join(root, 'index.html');
+const document = fs.readFileSync(index, 'utf8');
+fs.writeFileSync(index, document.replace(/(<script type="application\/json" id="catalog-data">)[\s\S]*?(<\/script>)/, (_, before, after) => before + JSON.stringify(data).replace(/</g, '\\u003c') + after));
+console.log(`Prepared ${data.products.length} public products.`);

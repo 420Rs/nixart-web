@@ -1,0 +1,419 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Stitch source — NIXART</title></head><body><header class="fixed top-0 left-0 w-full z-50 bg-surface-deep border-b border-border-subtle"><div class="h-14 max-w-[1280px] mx-auto px-margin-mobile md:px-margin flex items-center justify-between"><div class="flex items-center gap-space-xl"><a class="flex items-center gap-space-sm group" data-path="san-pham" href="#"><span class="font-label-md text-label-md tracking-wider uppercase text-text-primary font-medium">NIXART</span><span class="font-label-sm text-label-sm text-text-muted hidden sm:inline">nixart.io.vn</span></a><nav class="flex items-center gap-space-lg" data-active-classes="text-text-primary"><a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary transition-colors" data-path="san-pham" href="#">Sản phẩm</a><a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary transition-colors" data-path="cach-mua" href="#">Cách mua</a><a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary transition-colors" data-path="ho-tro" href="#">Hỗ trợ</a></nav></div><div class="flex items-center gap-space-md"><a class="inline-flex items-center gap-space-xs px-space-sm py-1 border border-border-subtle bg-surface-subtle hover:bg-surface-raised hover:border-border-muted text-text-secondary hover:text-text-primary transition-colors font-label-sm text-label-sm tracking-wider uppercase" href="https://discord.gg" rel="noreferrer" target="_blank"><span class="material-symbols-outlined text-[14px]">forum</span><span>Discord</span></a><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-border-subtle" src="https://lh3.googleusercontent.com/aida/AEtjO1Wkas79Il77pDpoYHN9MF2nN48dJspEyRurz4tLDoFEXY7_7QOJMIvMWOwxPnrjfUcWug6B3aiJ7n4noK_PWUVoVBcEGXPB2MKbuCg2FuPAOV4jOACJOuqhbkAoyYkCUc_nNMpaGV32IXGDa2nkk-8m7DBtItE-wbk3CsigPNyS5ibjnz6f4ax7fn7XPj5Uh2jds1pFFZ7lkGt0__fNLmMAyfp1PT6BNybUp638ttCjudJIC_q9qrZCDNs"></div></div></header>
+<main class="w-full pt-14 min-h-[calc(1024px-140px)] bg-surface-deep" data-stitch-vh="min-h-[calc(1024px-140px)]===min-h-[calc(100vh-140px)]"><div class="flex flex-col w-full">
+<div class="max-w-[1280px] w-full mx-auto px-margin-mobile md:px-margin pt-space-xl pb-24">
+<!-- 1. COMPACT HERO SECTION -->
+<section class="mb-space-xl border-b border-border-subtle pb-space-xl">
+<div class="flex flex-col items-start gap-space-sm max-w-3xl">
+<div class="inline-flex items-center gap-space-xs px-2 py-0.5 border border-border-subtle bg-surface-subtle font-label-sm text-label-sm text-text-muted tracking-widest uppercase">
+<span>CỬA HÀNG SỐ</span>
+<span class="text-border-muted">•</span>
+<span>DIGITAL GOODS &amp; TOOLS</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-text-primary tracking-tight font-medium mt-space-xs">
+          Công cụ tốt. Làm việc hay.
+        </h1>
+<p class="font-body-lg text-body-lg text-text-secondary leading-relaxed max-w-xl">
+          Cung cấp tài khoản công cụ AI bản quyền, phần mềm sáng tạo, giải pháp số và khóa học thực chiến. Nhanh chóng, minh bạch và hỗ trợ kích hoạt trực tiếp qua Discord.
+        </p>
+</div>
+</section>
+<!-- 2. FILTER & SEARCH CONTROLS -->
+<section class="mb-space-lg flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-sm w-full md:w-auto">
+<!-- Minimal Search Box -->
+<div class="relative w-full sm:w-80">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px] pointer-events-none">search</span>
+<input class="w-full bg-[#0E0E0E] text-text-primary placeholder:text-text-muted pl-9 pr-3 py-2 text-body-sm font-body-sm border border-border-subtle rounded-lg focus:outline-none focus:border-text-primary transition-colors" id="tool-search" placeholder="Tìm kiếm công cụ, phần mềm..." type="text">
+</div>
+<!-- Category Pills -->
+<div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0" id="category-filter-group">
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm font-medium transition-colors bg-text-primary text-surface-deep" data-category="all" type="button">Tất cả</button>
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors" data-category="AI" type="button">AI</button>
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors" data-category="Sáng tạo" type="button">Sáng tạo</button>
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors" data-category="Học tập" type="button">Học tập</button>
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors" data-category="Dịch vụ" type="button">Dịch vụ</button>
+<button class="category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors" data-category="Khóa học" type="button">Khóa học</button>
+</div>
+</div>
+<!-- Sort Selection -->
+<div class="flex items-center gap-space-xs self-end md:self-auto font-label-sm text-label-sm text-text-muted">
+<label class="text-text-muted uppercase tracking-wider" for="price-sort">Sắp xếp:</label>
+<div class="relative">
+<select class="appearance-none bg-[#0E0E0E] text-text-secondary border border-border-subtle rounded-lg py-1.5 pl-3 pr-8 font-label-sm text-label-sm focus:outline-none focus:border-text-primary transition-colors cursor-pointer" id="price-sort">
+<option value="default">Mặc định</option>
+<option value="price-asc">Giá tăng dần</option>
+<option value="price-desc">Giá giảm dần</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">expand_more</span>
+</div>
+</div>
+</section>
+<!-- 3. PRODUCT CATALOG GRID -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-space-xl" id="catalog-container">
+<!-- Card 1: Google AI Pro -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="AI" data-price="30000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">AI</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<svg aria-hidden="true" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+<path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"></path>
+</svg>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">Google AI Pro</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 18 tháng</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Bảo hành link kích hoạt</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">30.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 2: Canva Pro chính chủ -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Sáng tạo" data-price="80000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Sáng tạo</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary font-label-md font-bold italic tracking-tighter">
+              C.
+            </div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">Canva Pro chính chủ</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 1 năm</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Bảo hành 1 đổi 1 trong 6 tháng</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">80.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 3: CapCut Pro (7 ngày) -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Sáng tạo" data-price="15000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Sáng tạo</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<span class="material-symbols-outlined text-[20px]">movie_filter</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">CapCut Pro</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 7 ngày</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Kích hoạt tức thì</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">15.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 4: CapCut Pro (30 ngày) -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Sáng tạo" data-price="70000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Sáng tạo</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<span class="material-symbols-outlined text-[20px]">movie_filter</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">CapCut Pro</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 30 ngày</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Bản quyền ổn định</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">70.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 5: CapCut Pro (5–6 tháng) -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Sáng tạo" data-price="330000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Sáng tạo</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<span class="material-symbols-outlined text-[20px]">movie_filter</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">CapCut Pro</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 5–6 tháng</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Gói tiết kiệm dài hạn</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">330.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 6: ChatGPT Plus -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="AI" data-price="150000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">AI</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<svg aria-hidden="true" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+<path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 8.487a4.47 4.47 0 0 1 2.33-1.995v5.6a.78.78 0 0 0 .39.673l5.836 3.37-2.02 1.167a.08.08 0 0 1-.077.006l-4.84-2.793A4.504 4.504 0 0 1 2.34 8.487zm15.82 3.856l-5.84-3.372 2.02-1.166a.08.08 0 0 1 .077-.006l4.84 2.793a4.505 4.505 0 0 1-.686 8.118v-5.694a.78.78 0 0 0-.411-.673zm2.016-3.824l-.141-.085-4.774-2.78a.776.776 0 0 0-.785 0L8.633 9.023V6.691a.08.08 0 0 1 .033-.062l4.84-2.795a4.505 4.505 0 0 1 6.666 4.833zM12 14.167l-2.61-1.507 2.61-1.507 2.61 1.507L12 14.167z"></path>
+</svg>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">ChatGPT Plus</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> Gói kích hoạt</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Bảo hành 2 giờ</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">150.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 7: Claude Pro In-App -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="AI" data-price="410000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">AI</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<svg aria-hidden="true" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"></path>
+</svg>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">Claude Pro In-App</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 1 tháng</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Bảo hành 21 ngày</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">410.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 8: Duolingo Super -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Học tập" data-price="60000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Học tập</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<span class="material-symbols-outlined text-[20px]">school</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">Duolingo Super</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 12 tháng</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Nâng cấp tài khoản chính chủ</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">60.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+<!-- Card 9: Portfolio Web -->
+<article class="product-card flex flex-col justify-between bg-surface-subtle border border-border-subtle rounded-lg p-6 hover:border-border-muted transition-colors" data-category="Dịch vụ" data-price="350000">
+<div>
+<div class="flex items-center justify-between mb-4">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-text-muted border border-border-subtle px-2 py-0.5 rounded">Dịch vụ</span>
+<div class="w-6 h-6 flex items-center justify-center text-text-secondary">
+<span class="material-symbols-outlined text-[20px]">code</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium tracking-tight mb-2">Portfolio Web</h2>
+<div class="space-y-1 mb-6 text-body-sm font-body-sm text-text-muted">
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Thời hạn:</span> 1 năm</p>
+<p class="flex items-center gap-1.5"><span class="text-text-secondary">Bảo hành:</span> Mã nguồn tối ưu &amp; hosting</p>
+</div>
+</div>
+<div class="pt-4 border-t border-border-subtle flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted block">Đơn giá</span>
+<span class="font-label-md text-label-md text-text-primary font-medium">350.000đ</span>
+</div>
+<a class="font-body-sm text-body-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 transition-colors" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span>Xem chi tiết</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+</article>
+</section>
+<!-- 4. 3-STEP "CÁCH MUA" SECTION -->
+<section class="pt-space-xl border-t border-border-subtle mb-space-xl" id="cach-mua">
+<div class="mb-space-lg">
+<h2 class="font-headline-md text-headline-md text-text-primary font-medium tracking-tight">Quy trình mua hàng tinh gọn</h2>
+<p class="font-body-md text-body-md text-text-secondary mt-1">Thao tác trực tiếp qua Discord với sự hỗ trợ của đội ngũ NIXART.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 border border-border-subtle rounded-lg overflow-hidden bg-surface-subtle">
+<div class="p-6 md:p-8 border-b md:border-b-0 md:border-r border-border-subtle flex flex-col justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted tracking-widest uppercase block mb-4">BƯỚC 01</span>
+<h3 class="font-headline-sm text-headline-sm text-text-primary font-medium mb-2">Chọn sản phẩm</h3>
+<p class="font-body-sm text-body-sm text-text-secondary leading-relaxed">
+              Duyệt danh mục, lựa chọn gói thời hạn phù hợp với nhu cầu sử dụng của bạn.
+            </p>
+</div>
+<div class="mt-6 pt-4 border-t border-border-subtle/50 font-label-sm text-label-sm text-text-muted">
+            01 / BỘ LỌC TỰ DO
+          </div>
+</div>
+<div class="p-6 md:p-8 border-b md:border-b-0 md:border-r border-border-subtle flex flex-col justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted tracking-widest uppercase block mb-4">BƯỚC 02</span>
+<h3 class="font-headline-sm text-headline-sm text-text-primary font-medium mb-2">Thanh toán trên Discord</h3>
+<p class="font-body-sm text-body-sm text-text-secondary leading-relaxed">
+              Mở ticket tại Discord NIXART và quét mã chuyển khoản ngân hàng (QR Pay) an toàn.
+            </p>
+</div>
+<div class="mt-6 pt-4 border-t border-border-subtle/50 font-label-sm text-label-sm text-text-muted">
+            02 / TICKET RIÊNG TƯ
+          </div>
+</div>
+<div class="p-6 md:p-8 flex flex-col justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-text-muted tracking-widest uppercase block mb-4">BƯỚC 03</span>
+<h3 class="font-headline-sm text-headline-sm text-text-primary font-medium mb-2">Nhận hàng qua tin nhắn</h3>
+<p class="font-body-sm text-body-sm text-text-secondary leading-relaxed">
+              Nhận thông tin đăng nhập hoặc link kích hoạt tự động ngay trong kênh riêng sau 3-5 phút.
+            </p>
+</div>
+<div class="mt-6 pt-4 border-t border-border-subtle/50 font-label-sm text-label-sm text-text-muted">
+            03 / KÍCH HOẠT NHANH
+          </div>
+</div>
+</div>
+</section>
+<!-- 5. SUPPORT CALLOUT SECTION -->
+<section class="border border-border-subtle rounded-lg bg-surface-subtle p-8 md:p-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-lg" id="ho-tro">
+<div class="max-w-xl">
+<h2 class="font-headline-sm text-headline-sm text-text-primary font-medium">Cần hỗ trợ tư vấn hoặc yêu cầu công cụ đặc biệt?</h2>
+<p class="font-body-sm text-body-sm text-text-secondary mt-1">Đội ngũ kỹ thuật trực tuyến 24/7 giải đáp mọi thắc mắc và xử lý kích hoạt tài khoản.</p>
+</div>
+<a class="inline-flex items-center gap-space-xs px-5 py-2.5 border border-border-muted hover:border-text-primary text-text-primary rounded-lg transition-colors font-body-sm text-body-sm tracking-wide shrink-0" href="https://discord.gg" rel="noreferrer" target="_blank">
+<span class="material-symbols-outlined text-[18px]">forum</span>
+<span>Tham gia Discord NIXART</span>
+</a>
+</section>
+</div>
+</div>
+<script>
+  (function() {
+    const searchInput = document.getElementById('tool-search');
+    const sortSelect = document.getElementById('price-sort');
+    const filterButtons = document.querySelectorAll('.category-btn');
+    const gridContainer = document.getElementById('catalog-container');
+    
+    if (!gridContainer) return;
+    
+    let currentCategory = 'all';
+    let currentSearch = '';
+
+    function applyFilterAndSort() {
+      const cards = Array.from(gridContainer.querySelectorAll('.product-card'));
+
+      cards.forEach(card => {
+        const titleEl = card.querySelector('h2');
+        const title = titleEl ? titleEl.textContent.toLowerCase() : '';
+        const cat = card.getAttribute('data-category');
+
+        const matchesCat = (currentCategory === 'all' || cat === currentCategory);
+        const matchesSearch = title.includes(currentSearch);
+
+        if (matchesCat && matchesSearch) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      const sortMode = sortSelect ? sortSelect.value : 'default';
+      if (sortMode !== 'default') {
+        const sorted = cards.sort((a, b) => {
+          const priceA = parseInt(a.getAttribute('data-price') || '0', 10);
+          const priceB = parseInt(b.getAttribute('data-price') || '0', 10);
+          return sortMode === 'price-asc' ? priceA - priceB : priceB - priceA;
+        });
+        sorted.forEach(c => gridContainer.appendChild(c));
+      }
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        currentSearch = e.target.value.trim().toLowerCase();
+        applyFilterAndSort();
+      });
+    }
+
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterButtons.forEach(b => {
+          b.className = 'category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-muted transition-colors';
+        });
+        btn.className = 'category-btn px-3 py-1.5 rounded-lg text-body-sm font-body-sm font-medium transition-colors bg-text-primary text-surface-deep';
+        
+        currentCategory = btn.getAttribute('data-category') || 'all';
+        applyFilterAndSort();
+      });
+    });
+
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+        applyFilterAndSort();
+      });
+    }
+  })();
+</script></main>
+<footer class="w-full bg-surface-deep border-t border-border-subtle mt-space-xl"><div class="max-w-[1280px] mx-auto px-margin-mobile md:px-margin py-space-xl"><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md font-label-sm text-label-sm text-text-muted"><div class="flex flex-col sm:flex-row sm:items-center gap-space-xs sm:gap-space-md"><span>© 2025 NIXART — nixart.io.vn</span><span class="hidden sm:inline text-border-muted">/</span><span>Hỗ trợ trực tiếp qua Discord</span></div><div class="flex items-center gap-space-md"><a class="text-text-secondary hover:text-text-primary transition-colors" data-path="dieu-khoan" href="#">Điều khoản</a><span class="text-border-muted">/</span><a class="text-text-secondary hover:text-text-primary transition-colors" data-path="bao-mat" href="#">Bảo mật</a><span class="text-border-muted">/</span><a class="text-text-secondary hover:text-text-primary transition-colors" data-path="trang-thai" href="#">Trạng thái</a></div></div></div></footer></body></html>
