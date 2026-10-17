@@ -5,7 +5,7 @@ let cached, expires = 0;
 
 function groupFor(category) {
   if (['Google AI', 'ChatGPT', 'Claude', 'Claude API', 'Tripo 3D'].includes(category)) return 'AI';
-  if (['Adobe', 'Canva', 'CapCut'].includes(category)) return 'Sáng tạo';
+  if (['Adobe', 'Canva', 'CapCut', 'R.Finder'].includes(category)) return 'Sáng tạo';
   if (category === 'Duolingo') return 'Học tập';
   if (category === 'Dịch vụ web') return 'Dịch vụ';
   return 'Giải trí';
@@ -15,11 +15,12 @@ function publicProducts(shop, links, banners = [], optimized = []) {
   for (const row of shop) {
     if (String(row.id).startsWith('preorder-vrts-') || /khóa học|đặt trước/i.test(row.category || '')) continue;
     const price = Number(row.price), buyUrl = links.shop[row.id];
+    const bannerId = row.category === 'R.Finder' ? 'rfinder' : row.id;
     if (row.enabled !== true || !ID.test(row.id) || !Number.isSafeInteger(price) || price < 1000 || !DISCORD.test(buyUrl || '')) continue;
     products.push({ id: row.id, title: String(row.title), description: String(row.description || ''),
       price, category: String(row.category), group: groupFor(row.category),
       kind: 'Sản phẩm số', buyUrl,
-      imageUrl: banners.includes(row.id) ? `${API}/shop-banners/${row.id}.${optimized.includes(row.id) ? 'webp' : 'png'}` : '' });
+      imageUrl: banners.includes(bannerId) ? `${API}/shop-banners/${bannerId}.${optimized.includes(bannerId) ? 'webp' : 'png'}` : '' });
   }
   return products;
 }

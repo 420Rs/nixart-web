@@ -1,0 +1,2 @@
+Create a premium dark 3:2 R.Finder product banner. Use the existing white R and gray magnifying-glass app icon as the identity reference. Large white R.FINDER typography, small 3D ASSET DOWNLOADER and WINDOWS labels. One cinematic 3D object transitioning between solid and triangular wireframe, with subtle cool cyan accents on a near-black background. Minimal, strong negative space, no prices, no buttons, no unsupported feature claims. Shared banner for both license plans.
+Built-in image_gen mode.
