@@ -1,7 +1,7 @@
 {
   "name": "NIXART",
   "discordUrl": "https://discord.gg/B8ZXSNdVaR",
-  "updatedAt": "2026-10-17T10:42:35.014Z",
+  "updatedAt": "2026-10-22T06:42:06.272Z",
   "products": [
     {
       "id": "adobe-trial-7-days-kbh",
@@ -57,6 +57,17 @@
       "kind": "Sản phẩm số",
       "buyUrl": "https://discord.com/channels/1514539301625659392/1558680855059107893",
       "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/capcut-pro-7-ngay.webp"
+    },
+    {
+      "id": "chatgpt-plus-icloud-upi-bh2h",
+      "title": "GPT PLUS ICLOUD NEW DATE UPI — BẢO HÀNH 2 NGÀY",
+      "description": "Tài khoản ChatGPT Plus. Giá 160.000đ/tài khoản. Bảo hành 2 ngày. Tài khoản đăng ký bằng email dùng một lần; đổi mật khẩu, 2FA hoặc thông tin bảo mật có thể yêu cầu xác nhận qua email đăng ký. Khách tự chịu trách nhiệm với thao tác thay đổi bảo mật. Vui lòng đăng nhập và kiểm tra ngay sau khi nhận. Bot gửi tài khoản qua DM khi shop chuẩn bị xong.",
+      "price": 160000,
+      "category": "ChatGPT",
+      "group": "AI",
+      "kind": "Sản phẩm số",
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1558680858175610891",
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/chatgpt-plus-icloud-upi-bh2h.webp"
     },
     {
       "id": "claude-pro-inapp-1-thang",
@@ -180,15 +191,16 @@
       "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
     },
     {
-      "id": "tripo-3d-pro-3500-credit",
-      "title": "Tài khoản TRIPO 3D PRO 3500 credit",
-      "description": "Tài khoản TRIPO 3D PRO với 3500 credit. Sau khi thanh toán, shop chuẩn bị tài khoản và gửi riêng qua DM.",
-      "price": 130000,
-      "category": "Tripo 3D",
-      "group": "AI",
+      "id": "rlookdev-ani",
+      "title": "R.Lookdev_Ani — Shader & Animation (Blender 5.x)",
+      "description": "Addon Blender 5.x (EEVEE) hỗ trợ shader/lookdev và kiểm soát animation. Có Shader Presets (CEL / WUWA), Animation Browser và Weapon Sync. Giá 50.000đ. Lưu ý: chỉ bán addon, không kèm model. Model tải riêng trên web và chưa có shader; hình banner minh họa kết quả sử dụng addon. Sau khi thanh toán, bot gửi link tải bản đầy đủ qua DM.",
+      "price": 50000,
+      "category": "R.Lookdev_Ani",
+      "group": "Sáng tạo",
       "kind": "Sản phẩm số",
-      "buyUrl": "https://discord.com/channels/1514539301625659392/1558680878987739197",
-      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/tripo-3d-pro-3500-credit.webp"
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1562717416960692287",
+      "previewUrl": "https://discord.com/channels/1514539301625659392/1514539302556532759/1562696414897770546",
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rlookdev-ani.webp"
     },
     {
       "id": "youtube-3-thang-link-bhf",

@@ -5,7 +5,7 @@ let cached, expires = 0;
 
 function groupFor(category) {
   if (['Google AI', 'ChatGPT', 'Claude', 'Claude API', 'Tripo 3D'].includes(category)) return 'AI';
-  if (['Adobe', 'Canva', 'CapCut', 'R.Finder'].includes(category)) return 'Sáng tạo';
+  if (['Adobe', 'Canva', 'CapCut', 'R.Finder', 'R.Lookdev_Ani'].includes(category)) return 'Sáng tạo';
   if (category === 'Duolingo') return 'Học tập';
   if (category === 'Dịch vụ web') return 'Dịch vụ';
   return 'Giải trí';
@@ -20,6 +20,9 @@ function publicProducts(shop, links, banners = [], optimized = []) {
     products.push({ id: row.id, title: String(row.title), description: String(row.description || ''),
       price, category: String(row.category), group: groupFor(row.category),
       kind: 'Sản phẩm số', buyUrl,
+      ...(row.id === 'rlookdev-ani' ? {
+        previewUrl: 'https://discord.com/channels/1514539301625659392/1514539302556532759/1562696414897770546'
+      } : {}),
       imageUrl: banners.includes(bannerId) ? `${API}/shop-banners/${bannerId}.${optimized.includes(bannerId) ? 'webp' : 'png'}` : '' });
   }
   return products;
