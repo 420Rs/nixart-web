@@ -20,6 +20,8 @@ function publicProducts(shop, links, banners = [], optimized = []) {
     products.push({ id: row.id, title: String(row.title), description: String(row.description || ''),
       price, category: String(row.category), group: groupFor(row.category),
       kind: 'Sản phẩm số', buyUrl,
+      ...(Number.isSafeInteger(Number(row.compare_at_price)) && Number(row.compare_at_price) > price
+        ? { compareAtPrice: Number(row.compare_at_price) } : {}),
       ...(row.id === 'rlookdev-ani' ? {
         previewUrl: 'https://discord.com/channels/1514539301625659392/1514539302556532759/1562696414897770546'
       } : {}),
@@ -31,7 +33,7 @@ async function getLiveCatalog() {
   if (cached && Date.now() < expires) return cached;
   const sql = require('./database').neon();
   const [shop, posts] = await Promise.all([
-    sql`SELECT id,title,category,price,description,enabled FROM shop_products WHERE enabled=TRUE AND id NOT LIKE 'preorder-vrts-%' ORDER BY category,title,id`,
+    sql`SELECT id,title,category,price,compare_at_price,description,enabled FROM shop_products WHERE enabled=TRUE AND id NOT LIKE 'preorder-vrts-%' ORDER BY category,title,id`,
     sql`SELECT category,thread_id FROM shop_forum_posts WHERE guild_id=${process.env.DISCORD_GUILD_ID}`,
   ]);
   const links = structuredClone(require('./content/storefront-links.json'));

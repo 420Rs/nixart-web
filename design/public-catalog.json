@@ -1,7 +1,7 @@
 {
   "name": "NIXART",
   "discordUrl": "https://discord.gg/B8ZXSNdVaR",
-  "updatedAt": "2026-10-22T06:42:06.272Z",
+  "updatedAt": "2026-10-22T18:02:49.901Z",
   "products": [
     {
       "id": "adobe-trial-7-days-kbh",
@@ -90,6 +90,18 @@
       "kind": "Sản phẩm số",
       "buyUrl": "https://discord.com/channels/1514539301625659392/1559093671629160509",
       "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/claude-api-high-uptime-450-credit.webp"
+    },
+    {
+      "id": "up-huy-hieu-discord",
+      "title": "Up Huy hiệu Discord",
+      "description": "Xem profile của Admin.",
+      "price": 50000,
+      "category": "Discord",
+      "group": "Giải trí",
+      "kind": "Sản phẩm số",
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1562888884143001692",
+      "compareAtPrice": 99000,
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/up-huy-hieu-discord.webp"
     },
     {
       "id": "duolingo-super-12m-codes",
