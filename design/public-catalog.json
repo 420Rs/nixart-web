@@ -1,7 +1,7 @@
 {
   "name": "NIXART",
   "discordUrl": "https://discord.gg/B8ZXSNdVaR",
-  "updatedAt": "2026-10-22T18:02:49.901Z",
+  "updatedAt": "2026-10-24T13:56:56.364Z",
   "products": [
     {
       "id": "adobe-trial-7-days-kbh",
@@ -170,28 +170,6 @@
       "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/onlyfans-400-usd.webp"
     },
     {
-      "id": "rfinder-1-ngay",
-      "title": "R.Finder — 24 giờ",
-      "description": "Ứng dụng Windows tìm và tải tài nguyên 3D từ link. Gói 24 giờ, dùng trên 1 máy; thời hạn tính từ lần kích hoạt đầu tiên. Giá 20.000đ/key. Bộ cài R.Finder và key riêng được bot gửi qua DM sau khi thanh toán. Cần kết nối internet để kích hoạt và sử dụng.",
-      "price": 20000,
-      "category": "R.Finder",
-      "group": "Sáng tạo",
-      "kind": "Sản phẩm số",
-      "buyUrl": "https://discord.com/channels/1514539301625659392/1560964922815418451",
-      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
-    },
-    {
-      "id": "rfinder-1-thang",
-      "title": "R.Finder — 30 ngày",
-      "description": "Ứng dụng Windows tìm và tải tài nguyên 3D từ link. Gói 30 ngày, dùng trên 1 máy; thời hạn tính từ lần kích hoạt đầu tiên. Giá 80.000đ/key. Bộ cài R.Finder và key riêng được bot gửi qua DM sau khi thanh toán. Cần kết nối internet để kích hoạt và sử dụng.",
-      "price": 80000,
-      "category": "R.Finder",
-      "group": "Sáng tạo",
-      "kind": "Sản phẩm số",
-      "buyUrl": "https://discord.com/channels/1514539301625659392/1560964922815418451",
-      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
-    },
-    {
       "id": "rlookdev-ani",
       "title": "R.Lookdev_Ani — Shader & Animation (Blender 5.x)",
       "description": "Addon Blender 5.x (EEVEE) hỗ trợ shader/lookdev và kiểm soát animation. Có Shader Presets (CEL / WUWA), Animation Browser và Weapon Sync. Giá 50.000đ. Lưu ý: chỉ bán addon, không kèm model. Model tải riêng trên web và chưa có shader; hình banner minh họa kết quả sử dụng addon. Sau khi thanh toán, bot gửi link tải bản đầy đủ qua DM.",
@@ -213,6 +191,39 @@
       "kind": "Sản phẩm số",
       "buyUrl": "https://discord.com/channels/1514539301625659392/1558680882167152711",
       "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/youtube-3-thang-link-bhf.webp"
+    },
+    {
+      "id": "rfinder-1-ngay",
+      "title": "R.Finder — 24 giờ",
+      "description": "Ứng dụng Windows tải model từ Tripo và Aplaybox không cần tài khoản. Gói 24 giờ, dùng trên 1 máy. Thời hạn tính từ lần kích hoạt đầu tiên. Giá 20.000đ/key. Bộ cài và key riêng được bot gửi qua DM sau thanh toán. Cần kết nối internet để kích hoạt và sử dụng.",
+      "price": 20000,
+      "category": "R.Finder",
+      "group": "Sáng tạo",
+      "kind": "Sản phẩm số",
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1560964922815418451",
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
+    },
+    {
+      "id": "rfinder-1-thang",
+      "title": "R.Finder — 30 ngày",
+      "description": "Ứng dụng Windows tải model từ Tripo và Aplaybox không cần tài khoản. Gói 30 ngày, dùng trên 1 máy. Thời hạn tính từ lần kích hoạt đầu tiên. Giá 80.000đ/key. Bộ cài và key riêng được bot gửi qua DM sau thanh toán. Cần kết nối internet để kích hoạt và sử dụng.",
+      "price": 80000,
+      "category": "R.Finder",
+      "group": "Sáng tạo",
+      "kind": "Sản phẩm số",
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1560964922815418451",
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
+    },
+    {
+      "id": "rfinder-vinh-vien",
+      "title": "R.Finder — Vĩnh viễn",
+      "description": "Ứng dụng Windows tải model từ Tripo và Aplaybox không cần tài khoản. Gói Vĩnh viễn, dùng trên 1 máy. Key vĩnh viễn, không hết hạn. Giá 250.000đ/key. Bộ cài và key riêng được bot gửi qua DM sau thanh toán. Cần kết nối internet để kích hoạt và sử dụng.",
+      "price": 250000,
+      "category": "R.Finder",
+      "group": "Sáng tạo",
+      "kind": "Sản phẩm số",
+      "buyUrl": "https://discord.com/channels/1514539301625659392/1560964922815418451",
+      "imageUrl": "https://opq1k99m2f.apps.bot-hosting.cloud/shop-banners/rfinder.webp"
     }
   ]
 }
