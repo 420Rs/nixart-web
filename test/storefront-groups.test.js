@@ -9,11 +9,11 @@ test('grouped cards preserve each live package, price and Discord link', () => {
   const groupProducts = vm.runInNewContext(source + ';groupProducts');
   const catalog = JSON.parse(html.match(/id="catalog-data">([\s\S]*?)<\/script>/)[1]);
   const grouped = groupProducts(catalog.products);
-  assert.equal(grouped.length, catalog.products.length - 6);
-  for (const category of ['CapCut', 'OnlyFans', 'R.Finder']) {
+  assert.equal(grouped.length, catalog.products.length - 7);
+  for (const category of ['CapCut', 'OnlyFans', 'R.Finder', 'Muse AI']) {
     const cards = grouped.filter(p => p.category === category);
     assert.equal(cards.length, 1);
-    assert.equal(cards[0].variants.length, 3);
+    assert.equal(cards[0].variants.length, category === 'Muse AI' ? 2 : 3);
     assert.equal(cards[0].price, Math.min(...cards[0].variants.map(p => p.price)));
     for (const variant of cards[0].variants) {
       assert.deepEqual(variant, catalog.products.find(p => p.id === variant.id));
